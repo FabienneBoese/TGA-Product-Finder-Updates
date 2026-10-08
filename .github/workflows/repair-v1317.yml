@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v1.5.2 sidebar update control
+name: Publish TGA Product Finder v1.5.3 sidebar navigation
 on:
   push:
     paths:
@@ -10,56 +10,66 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and validate sidebar placement
+      - name: Build and verify navigation
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga152
-          unzip -q TGA_Product_Finder_Update_v1.5.1.zip -d /tmp/tga152
+          mkdir -p /tmp/tga153
+          unzip -q TGA_Product_Finder_Update_v1.5.2.zip -d /tmp/tga153
           python3 - <<'PY'
           from pathlib import Path
-          import json,py_compile,ast
-          p=Path('/tmp/tga152/app.py')
+          import json,py_compile
+          p=Path('/tmp/tga153/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.5.1"')==1
-          s=s.replace('APP_VERSION = "1.5.1"','APP_VERSION = "1.5.2"',1)
-          start=s.index('# v1.3.9: dauerhafter Update-Installationsbereich.')
-          block=s[start:]
-          assert 'key="persistent_update_install_v151"' in block
-          assert 'if st.button(' in block
-          block=block.replace('if st.button(\n            "Update jetzt installieren"','if st.sidebar.button(\n            "Update jetzt installieren"',1)
-          block=block.replace('persistent_update_install_v151','persistent_update_install_v152',1)
-          # Den kompletten Updatebereich direkt unter Programmupdates in die linke Leiste setzen.
-          s=s[:start]
-          marker='# v1.4.0: Projektverwaltung – alte Projekte werden aus Komponenten übernommen.'
-          assert s.count(marker)==1
-          block=block.replace('st.sidebar.markdown("---")','st.sidebar.markdown("---")\n        st.sidebar.subheader("Programmupdates")',1)
-          block=block.replace('st.sidebar.caption(f"Update-Paket: {_update_package_path}")','',1)
-          block=block.replace('st.sidebar.success("Update vollständig heruntergeladen und geprüft.")','st.sidebar.success("Update heruntergeladen und geprüft")',1)
-          s=s.replace(marker,block+'\n\n'+marker,1)
-          assert s.index('persistent_update_install_v152') < s.index(marker)
-          assert 'if st.sidebar.button(\n            "Update jetzt installieren"' in s
-          assert s.count('Update jetzt installieren')>=1
+          assert s.count('APP_VERSION = "1.5.2"')==1
+          s=s.replace('APP_VERSION = "1.5.2"','APP_VERSION = "1.5.3"',1)
+          s=s.replace('persistent_update_install_v152','persistent_update_install_v153',1)
+          a=s.index('# v1.4.0: Projektverwaltung – alte Projekte werden aus Komponenten übernommen.')
+          b=s.index("with st.expander('➕ Neues Bauprojekt anlegen'):",a)
+          c=s.index('con=db(); rows=con.execute(',b)
+          d=s.index("if rows:\n st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')",c)
+          head=s[a:b]
+          # Project selector is permanent in sidebar; navigation is the sidebar's entry point.
+          head=head.replace("st.subheader('🏗️ Projektverwaltung')\n",'',1)
+          head=head.replace("project=st.selectbox('Aktives Bauprojekt'", "project=st.sidebar.selectbox('Aktives Bauprojekt'",1)
+          assert "st.sidebar.selectbox('Aktives Bauprojekt'" in head
+          nav="""st.sidebar.markdown('---')
+          st.sidebar.subheader('Navigation')
+          _tga_page=st.sidebar.radio('Bereich öffnen', ['🏗️ Projektverwaltung','📊 Dokumentenübersicht'],key='tga_navigation',label_visibility='collapsed')
+          """
+          head=head+nav
+          project_ui=s[b:c]
+          project_ui="if _tga_page=='🏗️ Projektverwaltung':\n st.subheader('🏗️ Projektverwaltung')\n"+''.join(' '+line if line.strip() else line for line in project_ui.splitlines(keepends=True))
+          overview=s[c:]
+          # DB query is needed on both pages, but document overview and components must be behind navigation.
+          query=overview[:overview.index('if rows:\n')]
+          display=overview[len(query):]
+          display="if _tga_page=='📊 Dokumentenübersicht':\n st.subheader('📊 Dokumentenübersicht')\n"+''.join(' '+line if line.strip() else line for line in display.splitlines(keepends=True))
+          s=s[:a]+head+project_ui+query+display
+          assert s.count("st.sidebar.radio('Bereich öffnen'")==1
+          assert s.count("if _tga_page=='🏗️ Projektverwaltung':")==1
+          assert s.count("if _tga_page=='📊 Dokumentenübersicht':")==1
+          assert s.count('persistent_update_install_v153')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga152/version.json').write_text(json.dumps({'version':'1.5.2'},indent=2)+'\n',encoding='utf-8')
-          print('PASS: Python compiles; installation button in sidebar; placement before project content; updater unchanged')
+          Path('/tmp/tga153/version.json').write_text(json.dumps({'version':'1.5.3'},indent=2)+'\n',encoding='utf-8')
+          print('PASS: Python syntax, sidebar navigation, two page routes, update button retained')
           PY
-          (cd /tmp/tga152 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.2.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.5.2.zip
+          (cd /tmp/tga153 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.3.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.5.3.zip
           git config user.name "TGA Update Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add TGA_Product_Finder_Update_v1.5.2.zip
-          git commit -m "Build v1.5.2 sidebar install button"
+          git add TGA_Product_Finder_Update_v1.5.3.zip
+          git commit -m "Build v1.5.3 sidebar navigation"
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.2.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.3.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.5.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.2.zip','sha256':sha}
+          data={'version':'1.5.3','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.3.zip','sha256':sha}
           open('update_manifest.json','w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m "Publish immutable v1.5.2 manifest"
+          git commit -m "Publish immutable v1.5.3 manifest"
           git push
