@@ -1,0 +1,107 @@
+name: Publish TGA Product Finder v2.0.7
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v207.yml'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga207
+          unzip -q TGA_Product_Finder_Update_v2.0.6.zip -d /tmp/tga207
+          python3 - <<'PY'
+          from pathlib import Path
+          import py_compile
+          p=Path('/tmp/tga207/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.0.6"')==1
+          s=s.replace('APP_VERSION = "2.0.6"','APP_VERSION = "2.0.7"',1)
+          marker='def helios_search_pdf_candidates(model='
+          assert s.count(marker)==1
+          start=s.index(marker)
+          end=s.index('def discover_official_product_docs(',start)
+          replacement='''def helios_search_pdf_candidates(model='SB 125 A'):
+           """Read official HELIOS product downloads and verify actual PDF bytes."""
+           import requests,re
+           from bs4 import BeautifulSoup
+           from urllib.parse import urljoin,urlparse,unquote
+           if re.sub(r'[^a-z0-9]','',model.lower())!='sb125a':
+            raise ValueError('Nur HELIOS SB 125 A unterstützt.')
+           base='https://select.heliosventilatoren.de/de-de/get/product?language_id=de&ref_no=09506'
+           session=requests.Session()
+           session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/2.0.7)','Accept-Language':'de-DE,de;q=0.9'})
+           found={};warnings=[]
+           try:
+            page=session.get(base,timeout=20)
+            page.raise_for_status()
+            soup=BeautifulSoup(page.text,'html.parser')
+            candidates=[]
+            for a in soup.select('a[href]'):
+             url=urljoin(page.url,a.get('href',''))
+             label=a.get_text(' ',strip=True) or a.get('title','')
+             if 'pdf' in (url+' '+label).lower() or any(w in label.lower() for w in ('datenblatt','montage','betrieb','schaltplan','maßzeichnung','masszeichnung','konformität','erp','download')):
+              candidates.append((url,label))
+            for tag in soup.select('[data-url],[data-href]'):
+             url=urljoin(page.url,tag.get('data-url') or tag.get('data-href'))
+             candidates.append((url,tag.get_text(' ',strip=True)))
+            for url,label in candidates[:100]:
+             parsed=urlparse(url)
+             host=(parsed.hostname or '').lower()
+             if parsed.scheme!='https' or not (host=='heliosventilatoren.de' or host.endswith('.heliosventilatoren.de')):continue
+             if url in found:continue
+             try:
+              response=session.get(url,timeout=20,stream=True,allow_redirects=True)
+              response.raise_for_status()
+              final=response.url
+              final_host=(urlparse(final).hostname or '').lower()
+              if not (final_host=='heliosventilatoren.de' or final_host.endswith('.heliosventilatoren.de')):continue
+              first=next(response.iter_content(chunk_size=2048),b'')
+              if not first.startswith(b'%PDF-'):continue
+              title=label.strip() or unquote(urlparse(final).path.rsplit('/',1)[-1])
+              found[final]={'Kategorie':classify(title,final,'generic'),'Titel':title,
+                'Treffer %':90,'URL':final,'Quellseite':base,
+                'Relevant':True,'Priorität':'Anwendungsfall prüfen'}
+             except requests.RequestException:continue
+           except requests.RequestException as exc:
+            warnings.append('HELIOS-Produktseite nicht abrufbar: '+str(exc)[:160])
+           return list(found.values())[:25],warnings
+
+          '''
+          s=s[:start]+replacement+s[end:]
+          old="HELIOS-PDFs automatisch über Suchindex ermitteln"
+          assert s.count(old)==1
+          s=s.replace(old,"HELIOS-PDFs direkt beim Hersteller prüfen",1)
+          s=s.replace("st.session_state[f'universal-source-{cid}']='HELIOS-Suchindex'","st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'",1)
+          s=s.replace("modellbezogene PDF-Kandidaten gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.","verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.",1)
+          s=s.replace("Keine eindeutig modellbezogenen PDF-Links im Suchindex gefunden. Keine fremden Dokumente zugeordnet.","Keine direkt abrufbaren HELIOS-PDFs gefunden. Keine fremden Dokumente zugeordnet.",1)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          assert Path('/tmp/tga207/TGA_Updater.ps1').exists()
+          print('PASS: Python syntax and updater present')
+          PY
+          (cd /tmp/tga207 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.7.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.7.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.0.7.zip
+          git commit -m 'Build TGA Product Finder v2.0.7'
+          git pull --rebase origin main
+          git push
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.7.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.0.7','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.7.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.0.7 update manifest'
+          git pull --rebase origin main
+          git push
