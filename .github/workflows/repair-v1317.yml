@@ -1,4 +1,4 @@
-name: Publish v2.0.1 manufacturer search
+name: Publish v2.0.2 official product URL resolution
 on:
   push:
     paths:
@@ -13,42 +13,43 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga201
-          unzip -q TGA_Product_Finder_Update_v2.0.0.zip -d /tmp/tga201
+          mkdir -p /tmp/tga202
+          unzip -q TGA_Product_Finder_Update_v2.0.0.zip -d /tmp/tga202
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga201/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.0"')==1
+          p=Path('/tmp/tga202/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.0.1"')==1
           s=s.replace('APP_VERSION = "2.0.0"','APP_VERSION = "2.0.1"',1)
-          s=s.replace('persistent_update_install_v200','persistent_update_install_v201',1)
+          s=s.replace('persistent_update_install_v201','persistent_update_install_v202',1)
+          # Resolve known official product URLs automatically from manufacturer and model.
           anchor="   st.write(f'**Bewertung:** {stat}')"
           assert s.count(anchor)==1
-          extra="\n   if any(x in str(m).lower() for x in ('trox','helios','danfoss')):\n    import urllib.parse\n    _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)\n    _term='site:'+_domain+' '+str(m)+' '+str(a or p)\n    st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))\n    st.link_button('Hersteller-PDFs suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term+' Datenblatt Montageanleitung PDF'))"
+          extra="\n   _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}\n   _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())\n   _model=_norm(a)+' '+_norm(p)\n   _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)\n   if _url:\n    st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')\n    st.link_button('Erkannte Herstellerseite öffnen',_url)"
           s=s.replace(anchor,anchor+extra,1)
-          print('PASS official manufacturer-scoped product and PDF search links')
+          print('PASS official product URL resolver for known Helios and Danfoss families')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga201/version.json').write_text(json.dumps({'version':'2.0.1'})+'\n')
+          Path('/tmp/tga202/version.json').write_text(json.dumps({'version':'2.0.1'})+'\n')
           print('PASS syntax: stronger project-document product recognition and status labels')
           
           PY
-          (cd /tmp/tga201 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.1.zip
+          (cd /tmp/tga202 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.2.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.1.zip
-          git commit -m 'Build v2.0.1 project linking'
+          git add TGA_Product_Finder_Update_v2.0.2.zip
+          git commit -m 'Build v2.0.2 project linking'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.1.zip','sha256':sha}
+          data={'version':'2.0.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.2.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.1 manifest'
+          git commit -m 'Publish v2.0.2 manifest'
           git pull --rebase origin main
           git push
