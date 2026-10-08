@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.34 Model Recognition
+name: Publish TGA Product Finder v2.0.35 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga234
-          unzip -q TGA_Product_Finder_Update_v2.0.33.zip -d /tmp/tga234
+          mkdir -p /tmp/tga235
+          unzip -q TGA_Product_Finder_Update_v2.0.34.zip -d /tmp/tga235
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga234/app.py')
+          p=Path('/tmp/tga235/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.33"')==1
-          s=s.replace('APP_VERSION = "2.0.33"','APP_VERSION = "2.0.34"',1)
+          assert s.count('APP_VERSION = "2.0.34"')==1
+          s=s.replace('APP_VERSION = "2.0.34"','APP_VERSION = "2.0.35"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -62,6 +62,40 @@ jobs:
            "  finally:",
            "   try:r.close()",
            "   except UnboundLocalError:pass",
+           " # Document-based evidence: bounded verified PDF, never auto-approve a variant.",
+           " document_sources=[]",
+           " if basic_e:",
+           "  document_sources=[\"https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf\"]",
+           " if parsed.scheme==\"https\" and parsed.path.lower().endswith(\".pdf\") and parsed.hostname==domain:document_sources.insert(0,str(official_url))",
+           " doc_checked=0;doc_evidence=[];doc_errors=[]",
+           " for pdf_url in document_sources[:2]:",
+           "  try:",
+           "   rr=requests.get(pdf_url,timeout=12,stream=True,headers={\"User-Agent\":\"Mozilla/5.0\"})",
+           "   if rr.status_code!=200:doc_errors.append(\"HTTP \"+str(rr.status_code));rr.close();continue",
+           "   buf=bytearray()",
+           "   for chunk in rr.iter_content(65536):",
+           "    buf.extend(chunk)",
+           "    if len(buf)>4500000:break",
+           "   rr.close()",
+           "   if len(buf)>4500000 or not bytes(buf[:5])==b\"%PDF-\":doc_errors.append(\"Keine kleine gültige PDF\");continue",
+           "   doc_checked+=1;pdf_text=\"\"",
+           "   try:",
+           "    import fitz",
+           "    with fitz.open(stream=bytes(buf),filetype=\"pdf\") as pdf:",
+           "     pdf_text=\" \".join(page.get_text() for page in list(pdf)[:4])",
+           "   except ImportError:",
+           "    try:",
+           "     from pypdf import PdfReader",
+           "     from io import BytesIO",
+           "     pdf=PdfReader(BytesIO(buf));pdf_text=\" \".join((p.extract_text() or \"\") for p in pdf.pages[:4])",
+           "    except ImportError:doc_errors.append(\"PDF-Textbibliothek fehlt\")",
+           "   if pdf_text:",
+           "    matches=sorted(set(re.findall(r\"basic\\s*[- ]?e(?:\\s*[- ]?[a-z0-9]{1,12})?\",pdf_text,re.I)))[:8]",
+           "    if matches:doc_evidence.extend(matches)",
+           "  except requests.RequestException as exc:doc_errors.append(type(exc).__name__)",
+           " notes.append(\"Dokumentenanalyse: \"+str(doc_checked)+\" PDF geprüft, \"+str(len(doc_evidence))+\" Basic-E-Textmerkmale; keine automatische Variantenfreigabe\")",
+           " if doc_evidence:notes.append(\"PDF-Produktmerkmale (ungeprüft): \"+\", \".join(doc_evidence))",
+           " if doc_errors:notes.append(\"PDF-Diagnose: \"+\"; \".join(doc_errors[:3]))",
            " candidates=[];seen_urls=set()",
            " def add(url):",
            "  p=urlparse(url)",
@@ -152,31 +186,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: bounded KERMI page-content discovery and title checks')
+          print('PASS: bounded PDF evidence extraction with no automatic variant approval')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga234/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga235/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga234 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.34.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.34.zip
+          (cd /tmp/tga235 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.35.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.35.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.34.zip
-          git commit -m 'Build TGA Product Finder v2.0.34'
+          git add TGA_Product_Finder_Update_v2.0.35.zip
+          git commit -m 'Build TGA Product Finder v2.0.35'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.34.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.35.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.34','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.34.zip','sha256':sha}
+          data={'version':'2.0.35','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.35.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.34 update manifest'
+          git commit -m 'Publish v2.0.35 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
