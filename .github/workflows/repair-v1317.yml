@@ -16,6 +16,7 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/tga151
           unzip -q TGA_Product_Finder_Update_v1.5.0.zip -d /tmp/tga151
+          python3 -m pip install -q pandas openpyxl
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
