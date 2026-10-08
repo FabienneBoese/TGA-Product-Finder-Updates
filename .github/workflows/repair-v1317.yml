@@ -26,6 +26,10 @@ jobs:
           assert s.count(anchor)==1
           extra="\n   if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):\n    st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')\n    st.info('Bitte die bereits vorhandene automatische Herstellersuche für Helios verwenden. Die Google-PDF-Suche wurde entfernt.')"
           s=s.replace(anchor,anchor+extra,1)
+          marker="    st.info('Bitte die bereits vorhandene automatische Herstellersuche für Helios verwenden. Die Google-PDF-Suche wurde entfernt.')"
+          replacement="    if st.button('Helios Herstellerseite automatisch auslesen',key=f'helios_extract_{cid}'):\n     import requests\n     from bs4 import BeautifulSoup\n     from urllib.parse import urljoin\n     _page='https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506'\n     try:\n      _response=requests.get(_page,timeout=20);_response.raise_for_status()\n      _soup=BeautifulSoup(_response.text,'html.parser')\n      _found=[]\n      for _a in _soup.select('a[href]'):\n       _href=urljoin(_page,_a['href'])\n       if '.pdf' in _href.lower() and _href not in _found:_found.append(_href)\n      st.session_state[f'helios_pdfs_{cid}']=_found[:30]\n     except Exception as _e:st.warning(str(_e))\n    for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)"
+          assert s.count(marker)==1
+          s=s.replace(marker,replacement,1)
           print('PASS obsolete Google PDF search removed; existing automatic Helios document resolver retained')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
