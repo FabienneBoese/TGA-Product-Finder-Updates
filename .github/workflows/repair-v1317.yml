@@ -1,4 +1,4 @@
-name: Publish v1.8.2 Danfoss product family
+name: Publish v1.9.0 central project uploads
 on:
   push:
     paths:
@@ -13,53 +13,42 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga182
-          unzip -q TGA_Product_Finder_Update_v1.8.1.zip -d /tmp/tga182
+          mkdir -p /tmp/tga190
+          unzip -q TGA_Product_Finder_Update_v1.8.2.zip -d /tmp/tga190
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga182/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.8.1"')==1
-          s=s.replace('APP_VERSION = "1.8.1"','APP_VERSION = "1.8.2"',1).replace('persistent_update_install_v181','persistent_update_install_v182',1)
-          start=s.index('def discover_official_product_docs(')
-          end=s.index('def universal_docs_from_official_page(',start)
-          fn=s[start:end]
-          anchor=" candidates=[]\n"
-          assert fn.count(anchor)==1
-          addition=""" if 'danfoss' in m and 'ecl' in wanted and '310' in wanted:
-            source='https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'
-            url='https://assets.danfoss.com/documents/latest/374251/AI155886473192en-010702.pdf'
-            return source,[{'Kategorie':'Produktdatenblatt','Titel':'ECL Comfort 310 – allgemeines Herstellerdatenblatt (Ausführung prüfen)','Treffer %':55,'URL':url,'Quellseite':source,'Relevant':False,'Priorität':'Anwendungsfall prüfen'}]
-          """
-          fn=fn.replace(anchor,anchor+addition,1)
-          s=s[:start]+fn+s[end:]
-          assert s.count("u.hostname.lower()=='heliosventilatoren.de'")==1
-          s=s.replace("u.hostname.lower()=='heliosventilatoren.de' or u.hostname.lower().endswith('.heliosventilatoren.de')","u.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or u.hostname.lower().endswith('.heliosventilatoren.de')",1)
-          assert s.count("final.hostname.lower()=='heliosventilatoren.de'")==1
-          s=s.replace("final.hostname.lower()=='heliosventilatoren.de' or final.hostname.lower().endswith('.heliosventilatoren.de')","final.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or final.hostname.lower().endswith('.heliosventilatoren.de')",1)
-          s=s.replace('Für diesen Pilottest sind nur offizielle Helios-PDF-Links freigegeben.','Nur freigegebene offizielle Hersteller-PDF-Hosts zulässig.')
+          p=Path('/tmp/tga190/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.8.2"')==1
+          s=s.replace('APP_VERSION = "1.8.2"','APP_VERSION = "1.9.0"',1).replace('persistent_update_install_v182','persistent_update_install_v190',1)
+          old="['🏗️ Projektverwaltung','📊 Dokumentenübersicht']"
+          assert s.count(old)==1
+          s=s.replace(old,"['🏗️ Projektverwaltung','📊 Dokumentenübersicht','📁 Projektunterlagen']",1)
+          anchor="if _tga_page=='📊 Dokumentenübersicht':"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,"if _tga_page=='📁 Projektunterlagen':\n st.subheader('📁 Projektunterlagen')\n st.caption('Alle individuellen Unterlagen zentral hochladen. Vorschläge werden anhand der Komponentenliste erstellt; fachliche Freigabe erfolgt getrennt.')\n con.execute('CREATE TABLE IF NOT EXISTS project_uploads(id INTEGER PRIMARY KEY,project TEXT NOT NULL,filename TEXT NOT NULL,sha256 TEXT NOT NULL,path TEXT NOT NULL,uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(project,sha256))')\n con.execute('CREATE TABLE IF NOT EXISTS project_upload_links(upload_id INTEGER NOT NULL,component_id INTEGER NOT NULL,score INTEGER NOT NULL,confirmed INTEGER DEFAULT 0,PRIMARY KEY(upload_id,component_id))')\n con.commit()\n _uploads=st.file_uploader('Projektdateien gesammelt hochladen',type=['pdf','xlsx','xlsm','docx','txt'],accept_multiple_files=True,key=f'project_uploads_{project}')\n if _uploads and st.button('Dateien speichern und automatisch zuordnen',key=f'process_uploads_{project}'):\n  import io,zipfile,xml.etree.ElementTree as ET\n  _messages=[]\n  _base=os.path.join(DATA_ROOT,'ProjectUploads',safe(project))\n  os.makedirs(_base,exist_ok=True)\n  for _up in _uploads:\n   try:\n    _bytes=_up.getvalue()\n    if not _bytes or len(_bytes)>30*1024*1024:raise ValueError('Datei leer oder größer als 30 MB.')\n    _suffix=Path(_up.name).suffix.lower()\n    _digest=hashlib.sha256(_bytes).hexdigest()\n    _name=safe(Path(_up.name).stem)[:80]+_suffix\n    _target=os.path.join(_base,_digest[:16]+'_'+_name)\n    _existing=con.execute('SELECT id FROM project_uploads WHERE project=? AND sha256=?',(project,_digest)).fetchone()\n    if _existing:_uid=_existing[0]\n    else:\n     with open(_target,'wb') as _out:_out.write(_bytes)\n     _uid=con.execute('INSERT INTO project_uploads(project,filename,sha256,path) VALUES(?,?,?,?)',(project,_up.name,_digest,_target)).lastrowid\n    _content=''\n    if _suffix=='.pdf':\n     try:\n      from pypdf import PdfReader\n      _reader=PdfReader(io.BytesIO(_bytes))\n      _content=' '.join((page.extract_text() or '') for page in _reader.pages[:50])\n     except ImportError:\n      _messages.append(_up.name+': PDF-Texterkennung nicht verfügbar; Dateiname wird abgeglichen.')\n    elif _suffix in ('.xlsx','.xlsm'):\n     _frame=pd.read_excel(io.BytesIO(_bytes),sheet_name=None,header=None,nrows=500)\n     _content=' '.join(' '.join(df.fillna('').astype(str).to_numpy().flatten()) for df in _frame.values())\n    elif _suffix=='.txt':_content=_bytes.decode('utf-8',errors='replace')\n    elif _suffix=='.docx':\n     with zipfile.ZipFile(io.BytesIO(_bytes)) as _archive:\n      _xml=ET.fromstring(_archive.read('word/document.xml'))\n      _content=' '.join(x.text or '' for x in _xml.iter() if x.tag.endswith('}t'))\n    _hay=(' '+_up.name+' '+_content[:250000]+' ').lower()\n    _norm=lambda value: ''.join(ch for ch in str(value or '').lower() if ch.isalnum())\n    _compact=_norm(_hay)\n    con.execute('DELETE FROM project_upload_links WHERE upload_id=? AND confirmed=0',(_uid,))\n    for _cid,_m,_p,_a,*_rest in rows:\n     _manufacturer=_norm(_m);_model=_norm(_a);_product=_norm(_p)\n     _score=0\n     if _manufacturer and len(_manufacturer)>=4 and _manufacturer in _compact:_score+=25\n     if _model and len(_model)>=5 and _model in _compact:_score+=65\n     if _product and len(_product)>=7 and _product in _compact:_score+=35\n     if _score>=60:\n      con.execute('INSERT OR IGNORE INTO project_upload_links(upload_id,component_id,score,confirmed) VALUES(?,?,?,0)',(_uid,_cid,min(_score,100)))\n    _messages.append(_up.name+': gespeichert und abgeglichen.')\n   except Exception as _exc:_messages.append(_up.name+': Fehler – '+str(_exc))\n  con.commit()\n  for _message in _messages:st.write(_message)\n _stored=con.execute('SELECT id,filename,path FROM project_uploads WHERE project=? ORDER BY id DESC',(project,)).fetchall()\n st.markdown('**Gespeicherte Projektdateien und Zuordnungsvorschläge**')\n if not _stored:st.info('Noch keine individuellen Projektdateien hochgeladen.')\n for _uid,_filename,_path in _stored:\n  with st.expander(_filename):\n   if os.path.isfile(_path):\n    with open(_path,'rb') as _stream:st.download_button('Datei öffnen / herunterladen',_stream.read(),file_name=_filename,key=f'upload_file_{_uid}')\n   _matches=con.execute('SELECT l.component_id,c.manufacturer,c.product,c.article_no,l.score,l.confirmed FROM project_upload_links l JOIN components c ON c.id=l.component_id WHERE l.upload_id=? AND c.project=? ORDER BY l.score DESC',(_uid,project)).fetchall()\n   if not _matches:st.info('Keine eindeutige Produktzuordnung erkannt. Datei bleibt im Projektarchiv.')\n   for _cid,_m,_p,_a,_score,_confirmed in _matches:\n    _left,_right=st.columns([4,1])\n    _left.write(f'{_m} · {_p} · {_a or \"ohne Typ\"} – {_score}% Übereinstimmung')\n    if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):\n     if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()\n    elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()\n"+'\n'+anchor,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga182/version.json').write_text(json.dumps({'version':'1.8.2'})+'\n')
-          print('PASS syntax: Danfoss family datasheet candidate, Danfoss PDF host, review remains open')
+          Path('/tmp/tga190/version.json').write_text(json.dumps({'version':'1.9.0'})+'\n')
+          print('PASS: navigation, multi-upload, project-scoped storage, PDF/Excel/Word/text extraction, multi-match, manual review')
           
           PY
-          (cd /tmp/tga182 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.8.2.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.8.2.zip
+          (cd /tmp/tga190 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.9.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.9.0.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.8.2.zip
-          git commit -m 'Build v1.8.2 Danfoss family'
+          git add TGA_Product_Finder_Update_v1.9.0.zip
+          git commit -m 'Build v1.9.0 central uploads'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.8.2.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.9.0.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.8.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.8.2.zip','sha256':sha}
+          data={'version':'1.9.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.9.0.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.8.2 manifest'
+          git commit -m 'Publish v1.9.0 manifest'
           git pull --rebase origin main
           git push
