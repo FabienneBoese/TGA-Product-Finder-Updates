@@ -1,0 +1,29 @@
+AUDIT v2.2.4 - productive ZIP
+AST syntax: PASS
+PASS HELIOS 'SB 125 A': ('SB 125 A', '', 'type'); expected=type
+PASS HELIOS 'PA 10': ('PA 10', '', 'type'); expected=type
+PASS TROX 'FKRS-EU/DE/125': ('FKRS-EU/DE/125', '', 'type'); expected=type
+PASS TROX 'VFL': ('VFL', '', 'type'); expected=type
+PASS LUNOS 'V-EC': ('V-EC', '', 'type'); expected=type
+PASS LUNOS '3/UP': ('3/UP', '', 'type'); expected=type
+PASS TROX 'LVS': ('LVS', '', 'type'); expected=type
+PASS Danfoss 'ECL Comfort 310': ('ECL COMFORT 310', '', 'type'); expected=type
+PASS Reflex 'N 300': ('N 300', '', 'type'); expected=type
+PASS Reflex 'Servitec S': ('SERVITEC S', '', 'type'); expected=type
+PASS Reflex 'Fillset Compact Twin': ('', '', 'family'); expected=family
+PASS WIKA '111.10 NG 63': ('111.10 NG 63', '', 'type'); expected=type
+PASS Viega 'Profipress': ('', '', 'family'); expected=family
+PASS GEBERIT '501.632.00.1': ('', '501.632.00.1', 'article'); expected=article
+PASS GROHE '36327001': ('', '36327001', 'article'); expected=article
+PASS UNKNOWN 'A12': ('', 'A12', 'unclassified'); expected=unclassified
+EXCEL [{'Hersteller': 'HELIOS', 'Bezeichnung': 'SilentBox', 'Typ / Modell': 'SB 125 A', 'Artikelnummer': '', 'Gewerk': 'Lüftung'}, {'Hersteller': 'GEBERIT', 'Bezeichnung': 'Renova Plan', 'Typ / Modell': '', 'Artikelnummer': '501.632.00.1', 'Gewerk': 'Sanitär'}]
+EXCEL PASS
+SOURCE if _kind=='family': 2
+SOURCE if _kind in ('type','type_candidate'): 2
+SOURCE 'Datenvollständigkeit %': 1
+SOURCE 'Produktidentifikation': 1
+SOURCE auto_ok=sum: 1
+SOURCE score(r): 3
+SCORE Reflex N 300: 100
+SCORE Reflex Fillset Compact Twin: 100
+SCORE GEBERIT 501.632.00.1: 100
