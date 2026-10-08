@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.12 KERMI
+name: Publish TGA Product Finder v2.0.13 KERMI
 on:
   push:
     paths:
@@ -13,49 +13,52 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga212
-          unzip -q TGA_Product_Finder_Update_v2.0.11.zip -d /tmp/tga212
+          mkdir -p /tmp/tga213
+          unzip -q TGA_Product_Finder_Update_v2.0.12.zip -d /tmp/tga213
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga212/app.py')
+          p=Path('/tmp/tga213/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.11"')==1
-          s=s.replace('APP_VERSION = "2.0.11"','APP_VERSION = "2.0.12"',1)
-          marker="def discover_official_product_docs("
+          assert s.count('APP_VERSION = "2.0.12"')==1
+          s=s.replace('APP_VERSION = "2.0.12"','APP_VERSION = "2.0.13"',1)
+          marker="st.info('Für KERMI Basic-E die offizielle Herstellerseite https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/ prüfen. Für PDF-Kandidaten die universelle Suche verwenden.'); # "
           assert s.count(marker)==1
-          helper="def kermi_basic_official_documents():\n import requests\n from bs4 import BeautifulSoup\n from urllib.parse import urljoin,urlparse\n page_url='https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/'\n session=requests.Session()\n session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/2.0)','Accept-Language':'de-DE,de;q=0.9'})\n response=session.get(page_url,timeout=18)\n response.raise_for_status()\n soup=BeautifulSoup(response.text,'html.parser')\n hits=[];seen=set()\n for a in soup.select('a[href]'):\n  href=a.get('href','');label=a.get_text(' ',strip=True)\n  url=urljoin(response.url,href)\n  parsed=urlparse(url)\n  host=(parsed.hostname or '').lower()\n  if not (host=='kermi.com' or host.endswith('.kermi.com')):continue\n  if '.pdf' not in parsed.path.lower():continue\n  if url in seen:continue\n  if not any(x in (label+' '+url).lower() for x in ('basic','montage','anleitung','heizkörper','heizkoerper','bedien','prospekt','datenblatt')):continue\n  try:\n   pdf=session.get(url,timeout=18,stream=True)\n   pdf.raise_for_status()\n   first=next(pdf.iter_content(chunk_size=4096),b'')\n   if not first.startswith(b'%PDF-'):continue\n   seen.add(url)\n   hits.append({'Kategorie':'Planung & Montage' if 'montage' in label.lower() or 'anleitung' in label.lower() else 'Produktdatenblatt','Titel':label or parsed.path.rsplit('/',1)[-1],'Treffer %':65,'URL':url,'Quellseite':page_url,'Relevant':False,'Priorität':'KERMI Produktfamilie Basic; genaue Ausführung prüfen'})\n  except requests.RequestException:continue\n return hits[:30]\n\n"
-
-          s=s.replace(marker,helper+marker,1)
-          marker="if 'helios' in str(m).lower() and 'sb125a'"
-          if s.count(marker)==1:
-           s=s.replace(marker,block+marker,1)
-          else:
-           marker="st.info('Für dieses Produkt die universelle Dokumentensuche oben verwenden."
-           assert marker in s
-           s=s.replace(marker,"st.info('Für KERMI Basic-E die offizielle Herstellerseite https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/ prüfen. Für PDF-Kandidaten die universelle Suche verwenden.'); # "+marker,1)
+          replacement="""if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():
+    if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):
+     try:
+      _khits=kermi_basic_official_documents()
+      st.session_state[f'universal-hits-{cid}']=_khits
+      st.session_state[f'universal-source-{cid}']='KERMI Basic Herstellerseite'
+      if _khits:st.success(str(len(_khits))+' verifizierte KERMI-PDF-Kandidaten gefunden. Fachliche Freigabe offen.')
+      else:st.warning('Keine verifizierten PDF-Dateien auf der offiziellen KERMI-Familienseite gefunden.')
+     except Exception as exc:
+      st.warning('KERMI-Suche derzeit nicht erfolgreich: '+str(exc)[:160])
+    st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')
+   # """
+          s=s.replace(marker,replacement,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga212/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga213/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga212 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.12.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.12.zip
+          (cd /tmp/tga213 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.13.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.13.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.12.zip
-          git commit -m 'Build TGA Product Finder v2.0.12'
+          git add TGA_Product_Finder_Update_v2.0.13.zip
+          git commit -m 'Build TGA Product Finder v2.0.13'
           git pull --rebase origin main
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.12.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.13.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.12','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.12.zip','sha256':sha}
+          data={'version':'2.0.13','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.13.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.12 update manifest'
+          git commit -m 'Publish v2.0.13 update manifest'
           git pull --rebase origin main
           git push
