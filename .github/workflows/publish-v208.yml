@@ -46,7 +46,7 @@ jobs:
           migration=s[a:b]
           anchor="if _kind in ('type','type_candidate') and not str(_model or '').strip():"
           assert anchor in migration
-          migration=migration.replace(anchor,"if _kind=='family' and str(_article or '').strip():\n  c.execute('UPDATE components SET article_no=? WHERE id=?',('',_cid))\n "+anchor,1)
+          migration=migration.replace(anchor,"if _kind=='family' and str(_article or '').strip():\n   c.execute('UPDATE components SET article_no=? WHERE id=?',('',_cid))\n  "+anchor,1)
           s=s[:a]+migration+s[b:]
           # Keine Familienkennungen als Artikelnummern importieren.
           a=s.index('_final_article=_candidate_article if not _input_type else clean(r.Artikelnummer)')
