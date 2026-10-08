@@ -2,7 +2,7 @@ name: Publish TGA Product Finder v2.0.9
 on:
   push:
     paths:
-      - '.github/workflows/publish-v209.yml'
+      - '.github/workflows/publish-v208.yml'
 permissions:
   contents: write
 jobs:
