@@ -54,10 +54,10 @@ jobs:
            ' return result',
            '',
           ]
-          s=s[:start]+'\\n'.join(new_function)+'\\n'+s[end:]
+          s=s[:start]+'\n'.join(new_function)+'\n'+s[end:]
           ast.parse(s)
           namespace={}
-          exec('\\n'.join(new_function),namespace)
+          exec('\n'.join(new_function),namespace)
           test=namespace['universal_product_search_patterns']('Kermi','Badheizkörper','Basic-E')
           assert not any('Artikelnummer' in item['Suchmuster'] for item in test),test
           assert any(item['Suchbegriff']=='Kermi Badheizkörper Basic-E Datenblatt PDF' for item in test),test
