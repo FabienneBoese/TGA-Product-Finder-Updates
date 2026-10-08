@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.35 Model Recognition
+name: Publish TGA Product Finder v2.0.36 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga235
-          unzip -q TGA_Product_Finder_Update_v2.0.34.zip -d /tmp/tga235
+          mkdir -p /tmp/tga236
+          unzip -q TGA_Product_Finder_Update_v2.0.35.zip -d /tmp/tga236
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga235/app.py')
+          p=Path('/tmp/tga236/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.34"')==1
-          s=s.replace('APP_VERSION = "2.0.34"','APP_VERSION = "2.0.35"',1)
+          assert s.count('APP_VERSION = "2.0.35"')==1
+          s=s.replace('APP_VERSION = "2.0.35"','APP_VERSION = "2.0.36"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -80,15 +80,25 @@ jobs:
            "   if len(buf)>4500000 or not bytes(buf[:5])==b\"%PDF-\":doc_errors.append(\"Keine kleine gültige PDF\");continue",
            "   doc_checked+=1;pdf_text=\"\"",
            "   try:",
-           "    import fitz",
-           "    with fitz.open(stream=bytes(buf),filetype=\"pdf\") as pdf:",
-           "     pdf_text=\" \".join(page.get_text() for page in list(pdf)[:4])",
+           "    from pypdf import PdfReader",
+           "    from io import BytesIO",
            "   except ImportError:",
            "    try:",
+           "     import subprocess,sys,importlib",
+           "     install=subprocess.run([sys.executable,\"-m\",\"pip\",\"install\",\"--disable-pip-version-check\",\"--quiet\",\"pypdf>=5,<7\"],capture_output=True,text=True,timeout=60,check=False)",
+           "     if install.returncode!=0:raise RuntimeError(\"Installation fehlgeschlagen: \"+install.stderr[-160:])",
+           "     importlib.invalidate_caches()",
            "     from pypdf import PdfReader",
            "     from io import BytesIO",
-           "     pdf=PdfReader(BytesIO(buf));pdf_text=\" \".join((p.extract_text() or \"\") for p in pdf.pages[:4])",
-           "    except ImportError:doc_errors.append(\"PDF-Textbibliothek fehlt\")",
+           "     notes.append(\"PDF-Bibliothek: pypdf automatisch eingerichtet\")",
+           "    except (ImportError,RuntimeError,subprocess.TimeoutExpired) as exc:",
+           "     doc_errors.append(\"PDF-Bibliothek nicht verfügbar: \"+str(exc)[:180])",
+           "     PdfReader=None",
+           "   if PdfReader is not None:",
+           "    try:",
+           "     pdf=PdfReader(BytesIO(buf));pdf_text=\" \".join((page.extract_text() or \"\") for page in pdf.pages[:5])",
+           "     if not pdf_text.strip():doc_errors.append(\"PDF enthält keinen extrahierbaren Text (ggf. Scan)\")",
+           "    except Exception as exc:doc_errors.append(\"PDF-Textfehler: \"+type(exc).__name__)",
            "   if pdf_text:",
            "    matches=sorted(set(re.findall(r\"basic\\s*[- ]?e(?:\\s*[- ]?[a-z0-9]{1,12})?\",pdf_text,re.I)))[:8]",
            "    if matches:doc_evidence.extend(matches)",
@@ -186,31 +196,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: bounded PDF evidence extraction with no automatic variant approval')
+          print('PASS: pypdf auto-setup and bounded PDF text extraction')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga235/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga236/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga235 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.35.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.35.zip
+          (cd /tmp/tga236 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.36.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.36.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.35.zip
-          git commit -m 'Build TGA Product Finder v2.0.35'
+          git add TGA_Product_Finder_Update_v2.0.36.zip
+          git commit -m 'Build TGA Product Finder v2.0.36'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.35.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.36.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.35','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.35.zip','sha256':sha}
+          data={'version':'2.0.36','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.36.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.35 update manifest'
+          git commit -m 'Publish v2.0.36 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
