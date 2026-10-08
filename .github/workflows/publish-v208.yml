@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.24 Model Recognition
+name: Publish TGA Product Finder v2.0.25 Model Recognition
 on:
   push:
     paths:
@@ -13,95 +13,96 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga224
-          unzip -q TGA_Product_Finder_Update_v2.0.23.zip -d /tmp/tga224
+          mkdir -p /tmp/tga225
+          unzip -q TGA_Product_Finder_Update_v2.0.24.zip -d /tmp/tga225
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga224/app.py')
+          p=Path('/tmp/tga225/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.23"')==1
-          s=s.replace('APP_VERSION = "2.0.23"','APP_VERSION = "2.0.24"',1)
+          assert s.count('APP_VERSION = "2.0.24"')==1
+          s=s.replace('APP_VERSION = "2.0.24"','APP_VERSION = "2.0.25"',1)
           import ast
-          marker='def multistage_document_candidates('
-          assert s.count(marker)==1
-          helper=[
+          start=s.index('def search_document_focused_web(')
+          end=s.index('def multistage_document_candidates(',start)
+          new=[
            'def search_document_focused_web(manufacturer,product,model):',
-           ' """Search document-oriented phrases and return candidates, never automatic approvals."""',
-           ' import requests,re,html',
+           ' """Provider-oriented document discovery with explicit rejection diagnostics."""',
+           ' import requests,html',
            ' from bs4 import BeautifulSoup',
            ' from urllib.parse import urlparse,parse_qs,unquote',
            ' patterns=universal_product_search_patterns(manufacturer,product,model)',
            ' phrases=[p for p in patterns if p["Suchmuster"] in ("Datenblatt","Montageanleitung","Leistungserklärung","Zulassung","EPD")]',
-           ' notes=[];candidates=[];seen=set()',
+           ' candidates=[];notes=[];seen=set()',
+           ' providers=[("Google (experimentell)","https://www.google.com/search")]',
            ' for pattern in phrases:',
-           '  term=pattern["Suchbegriff"]',
-           '  try:',
-           '   response=requests.get("https://www.google.com/search",params={"q":term+" filetype:pdf","num":"8"},timeout=12,headers={"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
-           '   response.raise_for_status()',
-           '   soup=BeautifulSoup(response.text,"html.parser")',
-           '   count=0',
-           '   for anchor in soup.select("a[href]"):',
-           '    link=html.unescape(anchor.get("href",""))',
-           '    if link.startswith("/url?"):link=parse_qs(urlparse(link).query).get("q",[""])[0]',
-           '    parsed=urlparse(link)',
-           '    if parsed.scheme!="https" or not parsed.hostname or not parsed.path.lower().endswith(".pdf"):continue',
-           '    if parsed.hostname.lower().endswith("google.com"):continue',
-           '    title=anchor.get_text(" ",strip=True) or parsed.path.rsplit("/",1)[-1]',
-           '    context=(title+" "+unquote(parsed.path)).casefold()',
-           '    name=str(manufacturer).casefold().strip(); identity=str(model).casefold().strip()',
-           '    if not name or name not in context or not identity or identity not in context:continue',
-           '    if link in seen:continue',
-           '    seen.add(link);count+=1',
-           '    category={"Datenblatt":"Produktdatenblatt","Montageanleitung":"Montage & Betrieb – Hauptanleitung","Leistungserklärung":"Leistungserklärung (DoP)","Zulassung":"Zulassung/Prüfzeugnis","EPD":"EPD/DGNB/Umwelt"}[pattern["Suchmuster"]]',
-           '    candidates.append({"Kategorie":category,"Titel":title,"Treffer %":60,"URL":link,"Quellseite":"https://www.google.com/search?q="+requests.utils.quote(term),"Relevant":False,"Priorität":"Ungeprüfte Suchquelle; URL und Ausführung prüfen"})',
-           '    if count>=5:break',
-           '   notes.append(pattern["Suchmuster"]+": "+str(count)+" PDF-Kandidat(en) aus Websuche")',
-           '  except requests.RequestException as exc:notes.append(pattern["Suchmuster"]+": Websuche nicht erreichbar ("+str(exc)[:85]+")")',
+           '  term=pattern["Suchbegriff"];category=pattern["Suchmuster"]',
+           '  for provider,endpoint in providers:',
+           '   stats={"links":0,"pdf":0,"identity":0,"accepted":0}',
+           '   try:',
+           '    response=requests.get(endpoint,params={"q":term+" filetype:pdf","num":"8"},timeout=12,headers={"User-Agent":"Mozilla/5.0"})',
+           '    if response.status_code in (403,429):',
+           '     notes.append(category+": "+provider+" blockiert (HTTP "+str(response.status_code)+")");continue',
+           '    response.raise_for_status()',
+           '    if "text/html" not in response.headers.get("content-type","").lower():',
+           '     notes.append(category+": "+provider+" liefert kein HTML");continue',
+           '    soup=BeautifulSoup(response.text,"html.parser")',
+           '    if soup.find(string=lambda v:bool(v and ("unusual traffic" in v.lower() or "captcha" in v.lower()))):',
+           '     notes.append(category+": "+provider+" verlangt Bot-Prüfung");continue',
+           '    for anchor in soup.select("a[href]"):',
+           '     stats["links"]+=1',
+           '     link=html.unescape(anchor.get("href",""))',
+           '     if link.startswith("/url?"):link=parse_qs(urlparse(link).query).get("q",[""])[0]',
+           '     parsed=urlparse(link)',
+           '     if parsed.scheme!="https" or not parsed.hostname or not parsed.path.lower().endswith(".pdf"):continue',
+           '     if parsed.hostname.lower().endswith("google.com"):continue',
+           '     stats["pdf"]+=1',
+           '     title=anchor.get_text(" ",strip=True) or parsed.path.rsplit("/",1)[-1]',
+           '     context=(title+" "+unquote(parsed.path)).casefold()',
+           '     name=str(manufacturer).casefold().strip(); identity=str(model).casefold().strip()',
+           '     if not name or name not in context or not identity or identity not in context:continue',
+           '     stats["identity"]+=1',
+           '     if link in seen:continue',
+           '     seen.add(link);stats["accepted"]+=1',
+           '     kind={"Datenblatt":"Produktdatenblatt","Montageanleitung":"Montage & Betrieb – Hauptanleitung","Leistungserklärung":"Leistungserklärung (DoP)","Zulassung":"Zulassung/Prüfzeugnis","EPD":"EPD/DGNB/Umwelt"}[category]',
+           '     candidates.append({"Kategorie":kind,"Titel":title,"Treffer %":60,"URL":link,"Quellseite":response.url,"Relevant":False,"Priorität":"Suchtreffer; Quelle und Ausführung prüfen"})',
+           '     if stats["accepted"]>=5:break',
+           '    notes.append(category+": "+provider+" – "+str(stats["links"])+" Links, "+str(stats["pdf"])+" PDF-Links, "+str(stats["identity"])+" passende, "+str(stats["accepted"])+" übernommen")',
+           '   except requests.RequestException as exc:notes.append(category+": "+provider+" nicht erreichbar ("+str(exc)[:85]+")")',
            ' return candidates,notes',
            '',
           ]
-          s=s.replace(marker,'\n'.join(helper)+'\n'+marker,1)
-          start=s.index('def multistage_document_candidates(')
-          end=s.index('def document_source_policy(',start)
-          block=s[start:end]
-          needle=' return source,hits,stages'
-          assert block.count(needle)==1
-          addition=[
-           ' try:',
-           '  extra,notes=search_document_focused_web(manufacturer,product,model)',
-           '  merge(extra);stages.extend(notes)',
-           ' except Exception as exc:stages.append("Dokumentenorientierte Websuche: "+str(exc)[:110])',
-          ]
-          block=block.replace(needle,'\n'.join(addition)+'\n'+needle,1)
-          s=s[:start]+block+s[end:]
+          s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          assert 'search_document_focused_web(manufacturer,product,model)' in s
-          print('PASS: five document-specific web queries, model/manufacturer filtering, search logging, no auto approval')
+          namespace={}
+          exec('\n'.join(new),namespace)
+          assert callable(namespace['search_document_focused_web'])
+          assert 'Google (experimentell)' in s and 'PDF-Links' in s
+          print('PASS: provider abstraction, HTTP block detection, extracted/rejected PDF diagnostics')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga224/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga225/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga224 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.24.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.24.zip
+          (cd /tmp/tga225 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.25.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.25.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.24.zip
-          git commit -m 'Build TGA Product Finder v2.0.24'
+          git add TGA_Product_Finder_Update_v2.0.25.zip
+          git commit -m 'Build TGA Product Finder v2.0.25'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.24.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.25.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.24','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.24.zip','sha256':sha}
+          data={'version':'2.0.25','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.25.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.24 update manifest'
+          git commit -m 'Publish v2.0.25 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
