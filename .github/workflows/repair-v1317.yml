@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v1.5.6 FKRS-EU
+name: Publish TGA Product Finder v1.5.7 FKRS-EU
 on:
   push:
     paths:
@@ -14,84 +14,72 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga156
-          unzip -q TGA_Product_Finder_Update_v1.5.5.zip -d /tmp/tga156
+          mkdir -p /tmp/tga157
+          unzip -q TGA_Product_Finder_Update_v1.5.6.zip -d /tmp/tga157
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga156/app.py')
+          p=Path('/tmp/tga157/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.5.5"')==1
-          s=s.replace('APP_VERSION = "1.5.5"','APP_VERSION = "1.5.6"',1)
-          s=s.replace('persistent_update_install_v155','persistent_update_install_v156',1)
-          # Shared, conservative manufacturer rules: the official domain
-          # and product key are reused, but no unconfirmed documents are approved.
+          assert s.count('APP_VERSION = "1.5.6"')==1
+          s=s.replace('APP_VERSION = "1.5.6"','APP_VERSION = "1.5.7"',1)
+          s=s.replace('persistent_update_install_v156','persistent_update_install_v157',1)
+          # Excel may contain the TROX model in Typ/Modell instead of product name.
+          # Only an exact model token can select a safety-critical product family.
           anchor="def resolve_product_page(manufacturer, product):"
           assert s.count(anchor)==1
-          rules="""MANUFACTURER_SEARCH_RULES={
-           'trox':{'domain':'trox.de','strategy':'official_product_page'},
-           'rockwool':{'domain':'rockwool.com','strategy':'official_product_page'},
-          }
-
-          def manufacturer_search_rule(manufacturer):
-           key=clean(manufacturer).lower()
-           for name,rule in MANUFACTURER_SEARCH_RULES.items():
-            if name in key:return rule
-           return None
-
-          def previous_verified_product_documents(con,manufacturer,product,article,project):
-           # Reuse only exact manufacturer/product/article matches from other projects.
-           # This is a hint, never an automatic approval or a copied PDF.
-           if not clean(article):return []
-           rows=con.execute('SELECT c.manufacturer,c.product,c.article_no,c.project,d.doc_type,d.title,d.source_url FROM components c JOIN documents d ON d.component_id=c.id WHERE c.project!=? AND d.verified=1 AND d.source_url!="" ORDER BY c.project,d.doc_type',(project,)).fetchall()
-           expected=product_key(manufacturer,product)
-           result=[];seen=set()
-           for m,p,a,proj,kind,title,url in rows:
-            if product_key(m,p)!=expected or clean(a).upper()!=clean(article).upper():continue
-            if url in seen:continue
-            seen.add(url);result.append((proj,kind,title,url))
-           return result[:12]
+          helper="""def search_product_for_component(manufacturer,product,model):
+           ml=clean(manufacturer).lower()
+           if 'trox' not in ml:return product
+           import re
+           values=[clean(product).upper(),clean(model).upper()]
+           hits=set()
+           for val in values:
+            for code in ('FKRS-EU','FK2-EU','TVE'):
+             if re.search(r'(?<![A-Z0-9])'+re.escape(code)+r'(?![A-Z0-9])',val):
+              hits.add(code)
+           if len(hits)==1:return next(iter(hits))
+           return product
 
           """
-          s=s.replace(anchor,rules+anchor,1)
-          old="ml=manufacturer.lower(); allowed='trox.de' if ml=='trox' else 'rockwool.com'"
+          s=s.replace(anchor,helper+anchor,1)
+          old="auto=(product_key(m,p) in PRODUCTS and conlit_name_ok)"
           assert s.count(old)==1
-          s=s.replace(old,"rule=manufacturer_search_rule(manufacturer)\n if not rule:raise ValueError('Für diesen Hersteller ist noch kein geprüftes Suchmodul hinterlegt.')\n allowed=rule['domain']",1)
-          # Surface verified historical references directly in component editor.
-          marker="   st.write(f'**Bewertung:** {stat}')"
-          assert s.count(marker)==1
-          hint="""   _previous=previous_verified_product_documents(con,m,p,a,project)
-           if _previous:
-            with st.expander(f'Projektübergreifende Nachweise ({len(_previous)})'):
-             st.caption('Nur bereits geprüfte Hinweise zum gleichen Hersteller, Produkt und zur gleichen Artikelnummer. Keine automatische Freigabe oder Übernahme.')
-             for _prj,_kind,_title,_url in _previous:
-              st.write(f'{_kind}: {_title} (Projekt: {_prj})')
-              st.link_button('Offizielle Quelle öffnen',_url)
-          """
-          s=s.replace(marker,marker+'\n'+hint.rstrip('\n'),1)
-          assert s.count('previous_verified_product_documents(con,m,p,a,project)')==1
-          assert s.count('MANUFACTURER_SEARCH_RULES=')==1
-          assert s.count('persistent_update_install_v156')==1
+          s=s.replace(old,"_search_product=search_product_for_component(m,p,a)\n   auto=(product_key(m,_search_product) in PRODUCTS and conlit_name_ok)",1)
+          assert s.count("source,docs=find_docs(m,p)")==1
+          s=s.replace("source,docs=find_docs(m,p)","source,docs=find_docs(m,_search_product)",1)
+          # No automatic document approval and no changes to stored Excel values.
+          assert s.count('search_product_for_component(m,p,a)')==1
+          assert s.count('persistent_update_install_v157')==1
+          # Test exact and ambiguous model recognition without Streamlit import.
+          ns={'clean':lambda x:str(x or '').strip()}
+          exec(helper,ns)
+          fn=ns['search_product_for_component']
+          assert fn('TROX','Brandschutzklappe','FKRS-EU')=='FKRS-EU'
+          assert fn('TROX','FKRS.EU','')=='FKRS.EU'
+          assert fn('TROX','Brandschutzklappe FKRS-EU','')=='FKRS-EU'
+          assert fn('TROX','FK2-EU','FKRS-EU')=='FK2-EU'
+          assert fn('ROCKWOOL','Dämmung','FKRS-EU')=='Dämmung'
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga156/version.json').write_text(json.dumps({'version':'1.5.6'},indent=2)+'\n',encoding='utf-8')
+          Path('/tmp/tga157/version.json').write_text(json.dumps({'version':'1.5.7'},indent=2)+'\n',encoding='utf-8')
           print('PASS: FKRS-EU manufacturer source enabled, FK2-EU source separate, syntax valid')
           PY
-          (cd /tmp/tga156 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.6.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.5.6.zip
+          (cd /tmp/tga157 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.7.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.5.7.zip
           git config user.name "TGA Update Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add TGA_Product_Finder_Update_v1.5.6.zip
-          git commit -m "Build v1.5.6 TROX FKRS-EU source"
+          git add TGA_Product_Finder_Update_v1.5.7.zip
+          git commit -m "Build v1.5.7 TROX FKRS-EU source"
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.6.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.7.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.5.6','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.6.zip','sha256':sha}
+          data={'version':'1.5.7','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.7.zip','sha256':sha}
           open('update_manifest.json','w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m "Publish immutable v1.5.6 manifest"
+          git commit -m "Publish immutable v1.5.7 manifest"
           git push
