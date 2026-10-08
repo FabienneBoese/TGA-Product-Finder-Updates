@@ -272,9 +272,9 @@ jobs:
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           # Keine riskante automatische Umdeutung alter Artikelnummern:
           # Typ/Modell ist eine eigene persistente Information.
-          schema_anchor="  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT \"\"')"
-          assert s.count(schema_anchor)==1
-          s=s.replace(schema_anchor,schema_anchor+"\n  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT \"\"')",1)
+          schema_lines=[line for line in s.splitlines() if "if 'manufacturer_product_name' not in ccols:" in line]
+          assert len(schema_lines)==1,('schema anchor',len(schema_lines))
+          s=s.replace(schema_lines[0],schema_lines[0]+"\n  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT \"\"')",1)
           # Explizit bestaetigte Herstellerbezeichnung vorziehen, sonst Original beibehalten.
           row_lines=[line for line in s.splitlines() if "overview.append({" in line and "'Offline-PDFs':ooffline" in line]
           assert len(row_lines)==1,('overview row count',len(row_lines))
