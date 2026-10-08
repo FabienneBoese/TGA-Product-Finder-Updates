@@ -313,14 +313,14 @@ jobs:
           s=s.replace(marker,helper+marker,1)
           # Vorhandene Daten ohne Loeschung und ohne Neuimport migrieren.
           schema_lines=[line for line in s.splitlines() if "if 'model_type' not in ccols:" in line]
-          assert len(schema_lines)==1
+          assert len(schema_lines)==1,('model_type schema',len(schema_lines))
           schema_line=schema_lines[0]
           pad=schema_line[:len(schema_line)-len(schema_line.lstrip())]
           migration=pad+"for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():\n"+pad+" _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)\n"+pad+" if _kind=='type' and not str(_model or '').strip():\n"+pad+"  c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))"
           s=s.replace(schema_line,schema_line+"\n"+migration,1)
           # Bei neuen Excel-Imports Typ und Artikelnummer getrennt speichern.
           import_lines=[line for line in s.splitlines() if "INSERT INTO components(project,manufacturer,product,article_no,confidence,status,docs_searched,gewerk)" in line]
-          assert len(import_lines)==1
+          assert len(import_lines)==1,('import lines',len(import_lines))
           old=import_lines[0]
           indent=old[:len(old)-len(old.lstrip())]
           new=indent+"for _,r in df.iterrows():\n"+indent+" _typ,_article,_kind=classify_component_identifier(r.Hersteller,r.Bezeichnung,r.Artikelnummer)\n"+indent+" con.execute('INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched,gewerk) VALUES(?,?,?,?,?,?,?,0,?)',(project,r.Hersteller,r.Bezeichnung,_article,_typ,score(r),status(score(r)),r.Gewerk))"
