@@ -1,5 +1,4 @@
-name: Repair and publish v1.3.17
-# trigger 2
+name: Publish TGA Product Finder v1.4.0
 on:
   push:
     paths:
@@ -8,46 +7,82 @@ on:
 permissions:
   contents: write
 jobs:
-  repair:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Rebuild package from verified v1.3.16
+      - name: Build and verify v1.4.0
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/tga1317
-          mkdir -p /tmp/tga1317
-          unzip -q TGA_Product_Finder_Update_v1.3.16.zip -d /tmp/tga1317
+          mkdir -p /tmp/tga140
+          unzip -q TGA_Product_Finder_Update_v1.3.17.zip -d /tmp/tga140
           python3 - <<'PY'
           from pathlib import Path
-          import json
-          p=Path("/tmp/tga1317/app.py")
-          s=p.read_text(encoding="utf-8")
-          s=s.replace('APP_VERSION = "1.3.16"', 'APP_VERSION = "1.3.17"', 1)
-          s=s.replace('key="persistent_update_install_v1316"', 'key="persistent_update_install_v1317"', 1)
-          if 'APP_VERSION = "1.3.17"' not in s:
-              raise SystemExit("Versionswechsel in app.py fehlgeschlagen")
-          p.write_text(s, encoding="utf-8")
-          Path("/tmp/tga1317/version.json").write_text(json.dumps({"version":"1.3.17"}, indent=2), encoding="utf-8")
+          import json, py_compile
+          p=Path('/tmp/tga140/app.py')
+          s=p.read_text(encoding='utf-8')
+          def change(old,new):
+              global s
+              if s.count(old)!=1: raise RuntimeError('Expected exactly one occurrence: '+old[:90])
+              s=s.replace(old,new,1)
+          change(" c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')",
+                 " c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')\n c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')\n c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != \"\"')")
+          change('APP_VERSION = "1.3.17"','APP_VERSION = "1.4.0"')
+          change("project=st.text_input('Projektname','Testprojekt')",'''# v1.4.0: Projektverwaltung – alte Projekte werden aus Komponenten übernommen.
+          st.subheader('🏗️ Projektverwaltung')
+          with db() as project_db:
+           existing_projects=[r[0] for r in project_db.execute('SELECT name FROM projects ORDER BY name COLLATE NOCASE').fetchall()]
+          if not existing_projects:
+           with db() as project_db:
+            project_db.execute('INSERT OR IGNORE INTO projects(name) VALUES(?)',('Testprojekt',))
+           existing_projects=['Testprojekt']
+          if st.session_state.get('active_tga_project') not in existing_projects:
+           st.session_state['active_tga_project']=existing_projects[0]
+          project=st.selectbox('Aktives Bauprojekt',existing_projects,index=existing_projects.index(st.session_state['active_tga_project']),key='tga_project_selector')
+          st.session_state['active_tga_project']=project
+          with st.expander('➕ Neues Bauprojekt anlegen'):
+           with st.form('create_tga_project',clear_on_submit=True):
+            new_project=st.text_input('Projektbezeichnung',placeholder='z. B. Neubau Schule Nord')
+            create_project=st.form_submit_button('Projekt anlegen',type='primary')
+           if create_project:
+            new_project=new_project.strip()
+            if not new_project: st.error('Bitte eine Projektbezeichnung eingeben.')
+            elif new_project in existing_projects: st.warning('Dieses Projekt ist bereits vorhanden.')
+            elif len(new_project)>100 or any(x in new_project for x in ('/','\\\\')) or new_project in ('.','..'):
+             st.error('Bitte einen kürzeren Projektnamen ohne Schrägstriche verwenden.')
+            else:
+             with db() as project_db:
+              project_db.execute('INSERT INTO projects(name) VALUES(?)',(new_project,))
+             st.session_state['active_tga_project']=new_project
+             st.success('Projekt angelegt.')
+             st.rerun()
+          st.caption('Jedes Projekt hat eine eigene Komponentenliste und Dokumentenmappe. Bestehende Projektdaten bleiben erhalten.')''')
+          change("upload=st.file_uploader('Komponentenliste auswählen',type=['xlsx'],key='project_excel_update')",
+                 "st.warning('Achtung: Beim Übernehmen einer neuen Excel-Liste werden die bisherigen Produktzuordnungen und Dokumentverknüpfungen dieses Projekts ersetzt. Andere Projekte bleiben unverändert.')\n  upload=st.file_uploader('Komponentenliste auswählen',type=['xlsx'],key=f'project_excel_update_{project}')")
+          change("upload=st.file_uploader('Komponentenliste hochladen',type=['xlsx'],key='project_excel_initial')",
+                 "upload=st.file_uploader('Komponentenliste hochladen',type=['xlsx'],key=f'project_excel_initial_{project}')")
+          change('key="persistent_update_install_v1317"','key="persistent_update_install_v140"')
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          Path('/tmp/tga140/version.json').write_text(json.dumps({'version':'1.4.0'},indent=2)+'\n',encoding='utf-8')
           PY
-          rm -f TGA_Product_Finder_Update_v1.3.17.zip
-          (cd /tmp/tga1317 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.3.17.zip" .)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.3.17.zip | awk '{print $1}')
-          python3 - "$SHA" <<'PY'
-          import json,sys
-          sha=sys.argv[1]
-          data={
-            "version":"1.3.17",
-            "download_url":"https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v1.3.17.zip",
-            "sha256":sha,
-          }
-          open("update_manifest.json","w",encoding="utf-8").write(json.dumps(data,indent=2)+"\n")
-          PY
-      - name: Commit repaired binary and manifest
-        run: |
+          (cd /tmp/tga140 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.4.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.4.0.zip
           git config user.name "TGA Update Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add TGA_Product_Finder_Update_v1.3.17.zip update_manifest.json
-          git commit -m "Repair binary publish for TGA Product Finder v1.3.17"
+          git add TGA_Product_Finder_Update_v1.4.0.zip
+          git commit -m "Build verified v1.4.0 package"
+          git push
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.4.0.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'1.4.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.4.0.zip','sha256':sha}
+          Path='update_manifest.json'
+          open(Path,'w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m "Publish immutable v1.4.0 manifest"
           git push
