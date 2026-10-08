@@ -1,0 +1,371 @@
+MATCH LINE 1804
+1780:    except Exception as _exc:_messages.append(_up.name+': Fehler – '+str(_exc))
+1781:   con.commit()
+1782:   for _message in _messages:st.write(_message)
+1783:  _stored=con.execute('SELECT id,filename,path FROM project_uploads WHERE project=? ORDER BY id DESC',(project,)).fetchall()
+1784:  refresh_project_upload_links(con,project)
+1785:  st.markdown('**Gespeicherte Projektdateien und Zuordnungsvorschläge**')
+1786:  if not _stored:st.info('Noch keine individuellen Projektdateien hochgeladen.')
+1787:  for _uid,_filename,_path in _stored:
+1788:   with st.expander(_filename):
+1789:    if os.path.isfile(_path):
+1790:     with open(_path,'rb') as _stream:st.download_button('Datei öffnen / herunterladen',_stream.read(),file_name=_filename,key=f'upload_file_{_uid}')
+1791:    _matches=con.execute('SELECT l.component_id,c.manufacturer,c.product,c.article_no,l.score,l.confirmed FROM project_upload_links l JOIN components c ON c.id=l.component_id WHERE l.upload_id=? AND c.project=? ORDER BY l.score DESC',(_uid,project)).fetchall()
+1792:    if not _matches:st.info('Keine eindeutige Produktzuordnung erkannt. Datei bleibt im Projektarchiv.')
+1793:    for _cid,_m,_p,_a,_score,_confirmed in _matches:
+1794:     _left,_right=st.columns([4,1])
+1795:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1796:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1797:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1798:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1799: 
+1800: if _tga_page=='📊 Dokumentenübersicht':
+1801:  refresh_project_upload_links(con,project)
+1802:  st.subheader('📊 Dokumentenübersicht')
+1803:  if rows:
+1804:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1805:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1806:   overview=[]
+1807:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1808:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1809:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1810:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1811:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1812:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1813:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1814:    selections=get_component_selections(con,ocid)
+1815:    overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1816:   ovdf=pd.DataFrame(overview)
+1817:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1818:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1819:   k1,k2,k3,k4,k5=st.columns(5)
+1820:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1821:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1822:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1823:   st.divider()
+1824:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1825:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1826:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1827:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1828:  if not _offline_valid:
+1829:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1830:  else:
+1831:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1832:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1833:    _left,_right=st.columns([4,1])
+1834:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1835:    with open(_path,'rb') as _pdf:
+1836:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1837:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1838:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1839:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+
+MATCH LINE 1815
+1791:    _matches=con.execute('SELECT l.component_id,c.manufacturer,c.product,c.article_no,l.score,l.confirmed FROM project_upload_links l JOIN components c ON c.id=l.component_id WHERE l.upload_id=? AND c.project=? ORDER BY l.score DESC',(_uid,project)).fetchall()
+1792:    if not _matches:st.info('Keine eindeutige Produktzuordnung erkannt. Datei bleibt im Projektarchiv.')
+1793:    for _cid,_m,_p,_a,_score,_confirmed in _matches:
+1794:     _left,_right=st.columns([4,1])
+1795:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1796:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1797:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1798:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1799: 
+1800: if _tga_page=='📊 Dokumentenübersicht':
+1801:  refresh_project_upload_links(con,project)
+1802:  st.subheader('📊 Dokumentenübersicht')
+1803:  if rows:
+1804:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1805:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1806:   overview=[]
+1807:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1808:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1809:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1810:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1811:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1812:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1813:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1814:    selections=get_component_selections(con,ocid)
+1815:    overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1816:   ovdf=pd.DataFrame(overview)
+1817:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1818:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1819:   k1,k2,k3,k4,k5=st.columns(5)
+1820:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1821:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1822:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1823:   st.divider()
+1824:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1825:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1826:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1827:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1828:  if not _offline_valid:
+1829:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1830:  else:
+1831:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1832:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1833:    _left,_right=st.columns([4,1])
+1834:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1835:    with open(_path,'rb') as _pdf:
+1836:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1837:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1838:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1839:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1840:    st.write(f'**Bewertung:** {stat}')
+1841:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1842:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1843:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1844:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1845:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1846:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1847:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1848:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1849:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1850:       st.session_state[f'universal-hits-{cid}']=_hits
+
+MATCH LINE 1818
+1794:     _left,_right=st.columns([4,1])
+1795:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1796:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1797:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1798:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1799: 
+1800: if _tga_page=='📊 Dokumentenübersicht':
+1801:  refresh_project_upload_links(con,project)
+1802:  st.subheader('📊 Dokumentenübersicht')
+1803:  if rows:
+1804:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1805:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1806:   overview=[]
+1807:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1808:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1809:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1810:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1811:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1812:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1813:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1814:    selections=get_component_selections(con,ocid)
+1815:    overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1816:   ovdf=pd.DataFrame(overview)
+1817:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1818:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1819:   k1,k2,k3,k4,k5=st.columns(5)
+1820:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1821:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1822:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1823:   st.divider()
+1824:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1825:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1826:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1827:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1828:  if not _offline_valid:
+1829:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1830:  else:
+1831:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1832:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1833:    _left,_right=st.columns([4,1])
+1834:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1835:    with open(_path,'rb') as _pdf:
+1836:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1837:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1838:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1839:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1840:    st.write(f'**Bewertung:** {stat}')
+1841:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1842:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1843:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1844:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1845:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1846:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1847:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1848:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1849:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1850:       st.session_state[f'universal-hits-{cid}']=_hits
+1851:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1852:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1853:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+
+MATCH LINE 1820
+1796:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1797:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1798:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1799: 
+1800: if _tga_page=='📊 Dokumentenübersicht':
+1801:  refresh_project_upload_links(con,project)
+1802:  st.subheader('📊 Dokumentenübersicht')
+1803:  if rows:
+1804:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1805:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1806:   overview=[]
+1807:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1808:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1809:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1810:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1811:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1812:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1813:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1814:    selections=get_component_selections(con,ocid)
+1815:    overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1816:   ovdf=pd.DataFrame(overview)
+1817:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1818:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1819:   k1,k2,k3,k4,k5=st.columns(5)
+1820:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1821:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1822:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1823:   st.divider()
+1824:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1825:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1826:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1827:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1828:  if not _offline_valid:
+1829:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1830:  else:
+1831:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1832:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1833:    _left,_right=st.columns([4,1])
+1834:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1835:    with open(_path,'rb') as _pdf:
+1836:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1837:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1838:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1839:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1840:    st.write(f'**Bewertung:** {stat}')
+1841:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1842:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1843:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1844:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1845:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1846:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1847:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1848:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1849:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1850:       st.session_state[f'universal-hits-{cid}']=_hits
+1851:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1852:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1853:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1854:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1855:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+
+MATCH LINE 1825
+1801:  refresh_project_upload_links(con,project)
+1802:  st.subheader('📊 Dokumentenübersicht')
+1803:  if rows:
+1804:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1805:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1806:   overview=[]
+1807:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1808:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1809:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1810:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1811:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1812:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1813:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1814:    selections=get_component_selections(con,ocid)
+1815:    overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1816:   ovdf=pd.DataFrame(overview)
+1817:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1818:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1819:   k1,k2,k3,k4,k5=st.columns(5)
+1820:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1821:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1822:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1823:   st.divider()
+1824:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1825:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1826:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1827:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1828:  if not _offline_valid:
+1829:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1830:  else:
+1831:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1832:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1833:    _left,_right=st.columns([4,1])
+1834:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1835:    with open(_path,'rb') as _pdf:
+1836:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1837:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1838:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1839:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1840:    st.write(f'**Bewertung:** {stat}')
+1841:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1842:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1843:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1844:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1845:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1846:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1847:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1848:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1849:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1850:       st.session_state[f'universal-hits-{cid}']=_hits
+1851:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1852:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1853:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1854:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1855:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1856:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1857:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1858:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1859:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1860:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+
+MATCH LINE 1894
+1870:     st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))
+1871:     st.link_button('Hersteller-PDFs suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term+' Datenblatt Montageanleitung PDF'))
+1872:    _linked_uploads=project_uploads_for_component(con,project,cid)
+1873:    if _linked_uploads:
+1874:     st.markdown('**Zugeordnete individuelle Projektunterlagen**')
+1875:     for _uid,_filename,_path,_digest,_score,_confirmed in _linked_uploads:
+1876:      _a,_b=st.columns([4,1])
+1877:      _a.write(_filename+' · '+str(_score)+' % · '+('Zuordnung bestätigt' if _confirmed else ('Produkt eindeutig zugeordnet – Prüfung offen' if _score>=90 else 'Produktfamilie/Zuordnung prüfen')))
+1878:      with open(_path,'rb') as _f:_b.download_button('Datei öffnen',_f.read(),file_name=_filename,key=f'linked_upload_{cid}_{_uid}')
+1879:    manufacturer_product_name,name_confirmed=con.execute('SELECT manufacturer_product_name,product_name_confirmed FROM components WHERE id=?',(cid,)).fetchone()
+1880:    if is_rockwool_conlit(m,p):
+1881:     st.markdown('**Herstellerbezeichnung prüfen**')
+1882:     if name_confirmed and manufacturer_product_name==CONLIT_OFFICIAL_NAME:
+1883:      st.success(f'Bestätigte Herstellerbezeichnung: {CONLIT_OFFICIAL_NAME}')
+1884:      st.caption(f'Ursprünglicher Excel-Eintrag bleibt erhalten: „{p}“. Für Suche und Dokumentzuordnung wird die bestätigte Herstellerbezeichnung verwendet.')
+1885:      if st.button('↩️ Herstellerbezeichnung zurücksetzen',key=f'conlit-name-reset-{cid}'):
+1886:       con.execute('UPDATE components SET manufacturer_product_name="", product_name_confirmed=0, docs_searched=0 WHERE id=?',(cid,)); con.commit(); st.rerun()
+1887:     else:
+1888:      st.warning(f'Der Excel-Eintrag „{p}“ ist nicht die aktuelle vollständige Herstellerbezeichnung.')
+1889:      st.write(f'**Meinst du {CONLIT_OFFICIAL_NAME}?**')
+1890:      c_yes,c_no=st.columns(2)
+1891:      if c_yes.button('✓ Ja, diese Bezeichnung übernehmen',key=f'conlit-name-yes-{cid}',type='primary'):
+1892:       con.execute('UPDATE components SET manufacturer_product_name=?, product_name_confirmed=1, confidence=100, status=? WHERE id=?',(CONLIT_OFFICIAL_NAME,'Herstellerbezeichnung bestätigt',cid)); con.commit(); st.rerun()
+1893:      if c_no.button('Nein / anderes Produkt',key=f'conlit-name-no-{cid}'):
+1894:       con.execute('UPDATE components SET manufacturer_product_name="", product_name_confirmed=0 WHERE id=?',(cid,)); con.commit(); st.info('Bitte Produktbezeichnung bzw. Artikelnummer im Bestand klären. Die automatische Conlit-Zuordnung wird nicht als bestätigt behandelt.')
+1895:    if is_geberit_mapress_therm(m,p) and not a:
+1896:     st.markdown('**Geberit Mapress Therm · verbaute Systemkomponenten**')
+1897:     st.warning('„Mapress Therm“ ist ein System. In einem Projekt können mehrere Komponenten gleichzeitig verbaut sein. Bitte alle tatsächlich vorhandenen Dokumentgruppen markieren.')
+1898:     choices=['Systemrohr CrTi']+list(MAPRESS_THERM_FITTINGS)
+1899:     saved_sel=get_component_selections(con,cid)
+1900:     selected=st.multiselect('Welche Komponenten sind im Projekt verbaut?',choices,default=[x for x in saved_sel if x in choices],key=f'mapress-multi-{cid}')
+1901:     if selected:
+1902:      st.success('Ausgewählt: '+', '.join(selected))
+1903:      st.caption('Dimensionen werden weiterhin nur getrennt, wenn sie andere relevante Unterlagen benötigen. Für die Montage bleibt d108 als fachlicher Prüffall gekennzeichnet.')
+1904:      if set(selected)!=set(saved_sel):
+1905:       if st.button('✓ Auswahl im Projekt speichern',key=f'mapress-save-{cid}',type='primary'):
+1906:        save_component_selections(con,cid,selected); con.execute('UPDATE components SET docs_searched=0 WHERE id=?',(cid,)); con.commit(); st.rerun()
+1907:      else:
+1908:       st.info('Diese Mehrfachauswahl ist im Projekt gespeichert.')
+1909:       if st.button('🔎 Dokumente für alle ausgewählten Mapress-Komponenten suchen',key=f'mapress-docs-multi-{cid}',type='primary'):
+1910:        source,docs=mapress_selection_docs(selected); st.session_state[f'd-{cid}']=docs; st.session_state[f'q-{cid}']=source; persist_search_docs(con,cid,docs); st.rerun()
+1911:     else:
+1912:      st.caption('Noch keine Mapress-Systemkomponente ausgewählt. Beispiel: Systemrohr CrTi + Muffe können gleichzeitig markiert werden.')
+1913:      if saved_sel and st.button('Leere Auswahl speichern',key=f'mapress-clear-{cid}'):
+1914:       save_component_selections(con,cid,[]); con.execute('UPDATE components SET docs_searched=0 WHERE id=?',(cid,)); con.commit(); st.rerun()
+1915:     st.caption('Grundsatz: Mehrere tatsächlich verbaute Systemkomponenten dürfen gleichzeitig ausgewählt werden. Reine Dimensionsvarianten erzeugen nur bei dokumentrelevanten Unterschieden eigene Gruppen.')
+1916:    if is_geberit_verified(m,a):
+1917:     cfg=GEBERIT_VERIFIED_PRODUCTS[clean(a)]
+1918:     st.success(f"Geberit-Artikel exakt erkannt: {a} — {cfg['name']} · {cfg['details']}")
+1919:     if st.button('🔎 Geberit-Dokumente für exakten Artikel suchen',key=f'geberit-search-{cid}',type='primary'):
+1920:      source,docs=find_geberit_docs(a); st.session_state[f'd-{cid}']=docs; st.session_state[f'q-{cid}']=source; persist_search_docs(con,cid,docs)
+1921:      st.rerun()
+1922:    if is_grohe_eurosmart_ce(m,p):
+1923:     st.markdown('**GROHE-Variantenauflösung**')
+1924:     if a in GROHE_VARIANTS:
+1925:      st.success(f'Variante bestätigt: {grohe_variant_label(a)}')
+1926:      st.caption('Die konkrete Artikelnummer ist dem Bauteil zugeordnet. Die Dokumentensuche wird ausschließlich über diese Artikelnummer gestartet.')
+1927:      if st.button('🔎 GROHE-Dokumente für bestätigte Variante suchen',key=f'grohe-search-{cid}',type='primary'):
+1928:       try:
+1929:        with st.spinner(f'Offizielle GROHE-Produktseite für {a} wird ausgewertet …'): source,docs=find_grohe_docs(a)
