@@ -1,0 +1,101 @@
+name: Publish TGA Product Finder v2.0.6
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-v206.yml'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga206
+          unzip -q TGA_Product_Finder_Update_v2.0.5.zip -d /tmp/tga206
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,py_compile
+          p=Path('/tmp/tga206/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.0.5"')==1, 'Unexpected base version'
+          s=s.replace('APP_VERSION = "2.0.5"','APP_VERSION = "2.0.6"',1)
+          marker='def discover_official_product_docs(manufacturer,product,model):'
+          assert s.count(marker)==1
+          addition="""def helios_search_pdf_candidates(model='SB 125 A'):
+           \"\"\"Find model-specific official PDF candidates via an indexed search.\"\"\"
+           import requests,re
+           from bs4 import BeautifulSoup
+           from urllib.parse import urlparse,parse_qs,unquote
+           if re.sub(r'[^a-z0-9]','',model.lower())!='sb125a':
+            raise ValueError('Nur HELIOS SB 125 A unterstützt.')
+           queries=['site:heliosventilatoren.de "SB 125 A" filetype:pdf',
+                    'site:global.heliosventilatoren.de "SB 125 A" pdf',
+                    'site:heliosventilatoren.de "09506" pdf']
+           found={};warnings=[]
+           for q in queries:
+            try:
+             r=requests.get('https://www.google.com/search',params={'q':q,'num':20},headers={'User-Agent':'Mozilla/5.0'},timeout=12)
+             if r.status_code!=200:
+              warnings.append('Suchindex HTTP '+str(r.status_code));continue
+             soup=BeautifulSoup(r.text,'html.parser')
+             for a in soup.select('a[href]'):
+              raw=a.get('href','')
+              if raw.startswith('/url?'):raw=parse_qs(urlparse(raw).query).get('q',[''])[0]
+              raw=unquote(raw)
+              parsed=urlparse(raw);host=(parsed.hostname or '').lower()
+              if parsed.scheme!='https' or not (host=='heliosventilatoren.de' or host.endswith('.heliosventilatoren.de')):continue
+              if not parsed.path.lower().endswith('.pdf'):continue
+              label=clean(a.get_text(' ',strip=True))[:180]
+              evidence=(label+' '+unquote(parsed.path)).lower()
+              normalized=re.sub(r'[^a-z0-9]','',evidence)
+              if 'sb125a' not in normalized and '09506' not in normalized:continue
+              if raw not in found:
+               found[raw]={'Kategorie':classify(label,raw,'generic'),'Titel':label or parsed.path.rsplit('/',1)[-1],
+                'Treffer %':65 if 'sb125a' in normalized else 50,'URL':raw,
+                'Quellseite':'https://www.google.com/search?q='+requests.utils.quote(q),
+                'Relevant':False,'Priorität':'Anwendungsfall prüfen'}
+            except requests.RequestException as exc:warnings.append(type(exc).__name__)
+           return list(found.values())[:25],warnings
+
+          """
+          s=s.replace(marker,addition+marker,1)
+          needle="    st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')"
+          assert s.count(needle)==1, 'HELIOS UI not found'
+          insertion="""    if st.button('HELIOS-PDFs automatisch über Suchindex ermitteln',key=f'helios_index_{cid}'):
+             _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+             st.session_state[f'universal-hits-{cid}']=_hits
+             st.session_state[f'universal-source-{cid}']='HELIOS-Suchindex'
+             if _hits:st.success(f'{len(_hits)} modellbezogene PDF-Kandidaten gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+             else:st.warning('Keine eindeutig modellbezogenen PDF-Links im Suchindex gefunden. Keine fremden Dokumente zugeordnet.')
+             if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+          """
+          s=s.replace(needle,insertion+needle,1)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          assert Path('/tmp/tga206/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga206/version.json').exists()
+          print('PASS: v2.0.6 code compiled, updater present')
+          PY
+          (cd /tmp/tga206 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.6.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.6.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.0.6.zip
+          git commit -m 'Build TGA Product Finder v2.0.6'
+          git pull --rebase origin main
+          git push
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.6.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.0.6','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.6.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.0.6 update manifest'
+          git pull --rebase origin main
+          git push
