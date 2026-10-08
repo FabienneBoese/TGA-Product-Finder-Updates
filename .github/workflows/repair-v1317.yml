@@ -34,7 +34,7 @@ jobs:
             else:
              st.info('Standardausführung: Einbausituation, Antrieb/Zubehör und Gültigkeitsbereich von DoP, Montageanleitung und Nachweisen prüfen.')
             st.caption('Status: Ausführungsnachweise fachlich offen. Heruntergeladene PDFs gelten nicht automatisch als freigegeben.')
-'''
+          '''
           s=s.replace(marker,insert+marker,1)
           assert s.count('**Ausführungsprüfung – FKRS-EU**')==1
           assert s.count('persistent_update_install_v160')==1
