@@ -14,13 +14,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/tga202
-          unzip -q TGA_Product_Finder_Update_v2.0.0.zip -d /tmp/tga202
+          unzip -q TGA_Product_Finder_Update_v2.0.1.zip -d /tmp/tga202
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
           p=Path('/tmp/tga202/app.py');s=p.read_text(encoding='utf-8')
           assert s.count('APP_VERSION = "2.0.1"')==1
-          s=s.replace('APP_VERSION = "2.0.0"','APP_VERSION = "2.0.1"',1)
+          s=s.replace('APP_VERSION = "2.0.1"','APP_VERSION = "2.0.2"',1)
           s=s.replace('persistent_update_install_v201','persistent_update_install_v202',1)
           # Resolve known official product URLs automatically from manufacturer and model.
           anchor="   st.write(f'**Bewertung:** {stat}')"
@@ -30,7 +30,7 @@ jobs:
           print('PASS official product URL resolver for known Helios and Danfoss families')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga202/version.json').write_text(json.dumps({'version':'2.0.1'})+'\n')
+          Path('/tmp/tga202/version.json').write_text(json.dumps({'version':'2.0.2'})+'\n')
           print('PASS syntax: stronger project-document product recognition and status labels')
           
           PY
