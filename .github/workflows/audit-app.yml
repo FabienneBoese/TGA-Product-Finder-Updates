@@ -84,6 +84,16 @@ jobs:
           assert any('keine belegte Zuordnung zur Produktfamilie' in x for x in notes),notes
           assert any('keine automatische Variantenfreigabe' in x for x in notes),notes
           print('PASS: Echte Suchfunktion verarbeitet PDF mit HTTP-Mocks ohne automatische Familienfreigabe')
+          # Fehlerfaelle: gesperrte Herstellerseite, ungueltige PDF und fehlende Domain.
+          for status,data in [(403,b''),(404,b''),(200,b'<html>kein PDF</html>'),(200,b'%PDF-kaputt')]:
+              with mock.patch('requests.Session',Session),mock.patch('requests.get',return_value=Response(status,data)):
+                  found,diagnostics=scope['search_document_focused_web']('KERMI','Badheizkoerper','Basic-E')
+              assert isinstance(found,list) and isinstance(diagnostics,list),(status,type(found),type(diagnostics))
+              assert not any('automatisch freigegeben' in str(x).lower() for x in diagnostics),(status,diagnostics)
+              print('PASS: KERMI HTTP/PDF Fehlerfall',status,data[:15])
+          found,diagnostics=scope['search_document_focused_web']('Unbekannt','Ventilator','ABC123')
+          assert found==[] and any('Keine verifizierbare Herstellerdomain' in n for n in diagnostics)
+          print('PASS: Fehlende Herstellerdomain wird konservativ behandelt')
           PY
       - name: PDF and XLSX roundtrip and offline dedup
         run: |
