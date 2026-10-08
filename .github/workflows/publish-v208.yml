@@ -33,7 +33,7 @@ jobs:
            " from urllib.parse import urlparse,urljoin,unquote",
            " from collections import deque",
            " manufacturer=str(manufacturer).strip();product=str(product).strip();model=str(model).strip()",
-           " basic_e=\"kermi\" in manufacturer.casefold() and bool(re.search(r\"(?<![a-z0-9])basic[\\\\s\\\\-\\\\u2010-\\\\u2015\\\\u2212]*e(?![a-z0-9])\",(product+\" \"+model).casefold()))",
+           " basic_e=\"kermi\" in manufacturer.casefold() and bool(re.search(r\"(?<![a-z0-9])basic[ –—‐−-]*e(?![a-z0-9])\",(product+\" \"+model).casefold()))",
            " notes=[]",
            " if basic_e:notes.append(\"Produktabgleich: Basic-E und Basic 50 bleiben getrennt\")",
            " parsed=urlparse(str(official_url or \"\"))",
