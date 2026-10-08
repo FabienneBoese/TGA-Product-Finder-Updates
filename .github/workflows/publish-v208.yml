@@ -72,6 +72,8 @@ jobs:
            "      with st.expander('Suchprotokoll',expanded=False):",
            "       for _step in st.session_state[f'universal-stages-{cid}']:st.write(_step)",
           ]
+          indent=s[start:s.index('if st.button(',start)]
+          replacement=[indent+line[5:] if line.startswith('     ') else line for line in replacement]
           s=s[:start]+'\n'.join(replacement)+'\n'+s[end:]
           ast.parse(s)
           assert s.count('Mehrstufige Dokumentensuche starten')==1
