@@ -26,6 +26,7 @@ jobs:
           assert s.count(marker)==1
           replacement="if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():\n    if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):\n     try:\n      _khits=kermi_basic_official_documents()\n      st.session_state[f'universal-hits-{cid}']=_khits\n      st.session_state[f'universal-source-{cid}']='KERMI Basic Herstellerseite'\n      if _khits:st.success(str(len(_khits))+' verifizierte KERMI-PDF-Kandidaten gefunden. Fachliche Freigabe offen.')\n      else:st.warning('Keine verifizierten PDF-Dateien auf der offiziellen KERMI-Familienseite gefunden.')\n     except Exception as exc:\n      st.warning('KERMI-Suche derzeit nicht erfolgreich: '+str(exc)[:160])\n    st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')\n   # "
 
+          replacement='\n'.join([replacement.splitlines()[0]]+['                '+line for line in replacement.splitlines()[1:]])
           s=s.replace(marker,replacement,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
