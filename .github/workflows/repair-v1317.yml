@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v1.5.8 FKRS-EU
+name: Inspect v1.5.8 component UI
 on:
   push:
     paths:
@@ -6,87 +6,17 @@ on:
 permissions:
   contents: write
 jobs:
-  publish:
+  inspect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and validate FKRS-EU
-        shell: bash
+      - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga158
-          unzip -q TGA_Product_Finder_Update_v1.5.7.zip -d /tmp/tga158
-          python3 - <<'PY'
-          from pathlib import Path
-          import json,py_compile
-          p=Path('/tmp/tga158/app.py')
-          s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.5.7"')==1
-          s=s.replace('APP_VERSION = "1.5.7"','APP_VERSION = "1.5.8"',1)
-          s=s.replace('persistent_update_install_v157','persistent_update_install_v158',1)
-          # Normalize dots, Unicode dashes and whitespace in model designations.
-          start=s.index('def search_product_for_component(')
-          end=s.index('def resolve_product_page(',start)
-          replacement="""def search_product_for_component(manufacturer,product,model):
-           ml=clean(manufacturer).lower()
-           if 'trox' not in ml:return product
-           import re
-           values=[clean(product).upper(),clean(model).upper()]
-           hits=set()
-           for val in values:
-            normalized=re.sub(r'[.‐‑‒–—−_\s]+','-',val)
-            for code in ('FKRS-EU','FK2-EU','TVE'):
-             if re.search(r'(?<![A-Z0-9])'+re.escape(code)+r'(?![A-Z0-9])',normalized):
-              hits.add(code)
-           if len(hits)==1:return next(iter(hits))
-           return product
-
-          """
-          s=s[:start]+replacement+s[end:]
-          old="   _search_product=search_product_for_component(m,p,a)\n   auto="
-          assert s.count(old)==1
-          new="""   _search_product=search_product_for_component(m,p,a)
-           if 'trox' in clean(m).lower():
-            _manual=st.selectbox('TROX-Modell für Dokumentensuche', ['Automatisch erkennen','FKRS-EU','FK2-EU','TVE'],key=f'trox-search-model-{cid}',help='Wähle das tatsächlich verbaute Modell. Die Excel-Daten werden nicht verändert.')
-            if _manual!='Automatisch erkennen':
-             _search_product=_manual
-             st.caption('Manuelle Modellauswahl nur für diese Dokumentensuche; keine automatische Dokumentenfreigabe.')
-            elif product_key(m,_search_product) not in PRODUCTS:
-             st.warning('TROX-Modell nicht eindeutig erkannt. Bitte oben das tatsächlich verbaute Modell auswählen.')
-             auto="""
-          s=s.replace(old,new,1)
-          assert s.count('source,docs=find_docs(m,_search_product)')==1
-          assert s.count("st.selectbox('TROX-Modell für Dokumentensuche'")==1
-          assert s.count('persistent_update_install_v158')==1
-          ns={'clean':lambda x:str(x or '').strip()}
-          exec(replacement,ns)
-          fn=ns['search_product_for_component']
-          assert fn('TROX','FKRS.EU','')=='FKRS-EU'
-          assert fn('TROX','Brandschutzklappe','FKRS-EU')=='FKRS-EU'
-          assert fn('TROX','FKRS–EU','')=='FKRS-EU'
-          assert fn('TROX','Brandschutzklappe','FKRS EU')=='FKRS-EU'
-          assert fn('TROX','FK2-EU','FKRS-EU')=='FK2-EU'
-          assert fn('ROCKWOOL','Dämmung','FKRS-EU')=='Dämmung'
-          p.write_text(s,encoding='utf-8')
-          py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga158/version.json').write_text(json.dumps({'version':'1.5.8'},indent=2)+'\n',encoding='utf-8')
-          print('PASS: FKRS-EU manufacturer source enabled, FK2-EU source separate, syntax valid')
-          PY
-          (cd /tmp/tga158 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.8.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.5.8.zip
+          unzip -p TGA_Product_Finder_Update_v1.5.8.zip app.py > app_v158_reference.py
+          python3 -m py_compile app_v158_reference.py
           git config user.name "TGA Update Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add TGA_Product_Finder_Update_v1.5.8.zip
-          git commit -m "Build v1.5.8 TROX FKRS-EU source"
-          git push
-          PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.8.zip | awk '{print $1}')
-          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
-          import json,sys
-          sha,commit=sys.argv[1:]
-          data={'version':'1.5.8','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.8.zip','sha256':sha}
-          open('update_manifest.json','w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
-          PY
-          git add update_manifest.json
-          git commit -m "Publish immutable v1.5.8 manifest"
+          git add app_v158_reference.py
+          git commit -m "Extract v1.5.8 UI for diagnostic review"
           git push
