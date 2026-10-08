@@ -57,8 +57,8 @@ jobs:
           s=s.replace(marker,'\n'.join(helper)+'\n'+marker,1)
           old="if st.button('Produktseite und Dokumente automatisch suchen',key=f'universal-auto-{cid}'):"
           assert s.count(old)==1
-          start=s.rfind('\\n',0,s.index(old))+1
-          end=s.rfind('\\n',0,s.index('with st.expander("Herstellerübergreifende Suchmuster',start))+1
+          start=s.rfind('\n',0,s.index(old))+1
+          end=s.rfind('\n',0,s.index('with st.expander("Herstellerübergreifende Suchmuster',start))+1
           replacement=[
            "     if st.button('Mehrstufige Dokumentensuche starten',key=f'universal-auto-{cid}',type='primary'):",
            "      with st.spinner('Hersteller- und geprüfte Produktquellen werden durchsucht …'):",
