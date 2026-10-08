@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.11
+name: Publish TGA Product Finder v2.0.12
 on:
   push:
     paths:
@@ -13,43 +13,92 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga211
-          unzip -q TGA_Product_Finder_Update_v2.0.10.zip -d /tmp/tga211
+          mkdir -p /tmp/tga212
+          unzip -q TGA_Product_Finder_Update_v2.0.11.zip -d /tmp/tga212
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga211/app.py')
+          p=Path('/tmp/tga212/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.10"')==1
-          s=s.replace('APP_VERSION = "2.0.10"','APP_VERSION = "2.0.11"',1)
-          old="st.caption('Automatische Herstellersuche für dieses Produkt noch nicht aktiviert.'); st.link_button('Herstellerbezogene Produktsuche öffnen',google_url(m,p,a))"
-          assert s.count(old)==1
-          s=s.replace(old,"st.info('Für dieses Produkt die universelle Dokumentensuche oben verwenden. Klicke auf Produktseite und Dokumente automatisch suchen. Keine Weiterleitung zu Google erforderlich.')",1)
-          old="st.caption('Für noch nicht unterstützte Hersteller: Offizielle Produktseite eintragen. Gefundene Dokumente werden als ungeprüfte Kandidaten angezeigt, nicht freigegeben.')"
-          assert s.count(old)==1
-          s=s.replace(old,"st.caption('Für alle weiteren Hersteller: Zuerst Produktseite und Dokumente automatisch suchen anklicken. Eine manuelle Herstelleradresse ist nur als Alternative nötig. PDF-Kandidaten bleiben prüfpflichtig.')",1)
+          assert s.count('APP_VERSION = "2.0.11"')==1
+          s=s.replace('APP_VERSION = "2.0.11"','APP_VERSION = "2.0.12"',1)
+          marker="def discover_official_product_docs("
+          assert s.count(marker)==1
+          helper="""def kermi_basic_official_documents():
+ import requests
+ from bs4 import BeautifulSoup
+ from urllib.parse import urljoin,urlparse
+ page_url='https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/'
+ session=requests.Session()
+ session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/2.0)','Accept-Language':'de-DE,de;q=0.9'})
+ response=session.get(page_url,timeout=18)
+ response.raise_for_status()
+ soup=BeautifulSoup(response.text,'html.parser')
+ hits=[];seen=set()
+ for a in soup.select('a[href]'):
+  href=a.get('href','');label=a.get_text(' ',strip=True)
+  url=urljoin(response.url,href)
+  parsed=urlparse(url)
+  host=(parsed.hostname or '').lower()
+  if not (host=='kermi.com' or host.endswith('.kermi.com')):continue
+  if '.pdf' not in parsed.path.lower():continue
+  if url in seen:continue
+  if not any(x in (label+' '+url).lower() for x in ('basic','montage','anleitung','heizkörper','heizkoerper','bedien','prospekt','datenblatt')):continue
+  try:
+   pdf=session.get(url,timeout=18,stream=True)
+   pdf.raise_for_status()
+   first=next(pdf.iter_content(chunk_size=4096),b'')
+   if not first.startswith(b'%PDF-'):continue
+   seen.add(url)
+   hits.append({'Kategorie':'Planung & Montage' if 'montage' in label.lower() or 'anleitung' in label.lower() else 'Produktdatenblatt','Titel':label or parsed.path.rsplit('/',1)[-1],'Treffer %':65,'URL':url,'Quellseite':page_url,'Relevant':False,'Priorität':'KERMI Produktfamilie Basic; genaue Ausführung prüfen'})
+  except requests.RequestException:continue
+ return hits[:30]
+
+"""
+          s=s.replace(marker,helper+marker,1)
+          marker="if st.button('HELIOS-Dokumente mit Versionsprüfung suchen'"
+          if marker in s:
+           pass
+          marker="if 'helios' in str(m).lower() and 'sb125a'"
+          assert s.count(marker)==1
+          block="""if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():
+   st.caption('KERMI Basic-E: offizielle Basic-50-Familienseite; die exakte elektrische Variante muss fachlich bestätigt werden.')
+   if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):
+    try:
+     _khits=kermi_basic_official_documents()
+     st.session_state[f'universal-hits-{cid}']=_khits
+     st.session_state[f'universal-source-{cid}']='KERMI Basic-50 Herstellerseite'
+     if _khits:st.success(str(len(_khits))+' verifizierte offizielle KERMI-PDF-Kandidaten gefunden. Fachliche Prüfung erforderlich.')
+     else:st.warning('Auf der KERMI-Familienseite keine direkt abrufbaren PDF-Links erkannt. Keine falschen Dokumente zugeordnet.')
+    except Exception as exc:
+     st.warning('KERMI-Herstellerseite derzeit nicht auswertbar: '+str(exc)[:180])
+   st.caption('Die allgemeine PDF-Kandidatenliste und Offline-Speicherung befinden sich im Bereich Universelle Dokumentensuche.')
+   st.markdown('[Offizielle KERMI Basic-50 Produktfamilie](https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/)')
+   
+ """
+          s=s.replace(marker,block+marker,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga211/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga212/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga211 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.11.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.11.zip
+          (cd /tmp/tga212 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.12.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.12.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.11.zip
-          git commit -m 'Build TGA Product Finder v2.0.11'
+          git add TGA_Product_Finder_Update_v2.0.12.zip
+          git commit -m 'Build TGA Product Finder v2.0.12'
           git pull --rebase origin main
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.11.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.12.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.11','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.11.zip','sha256':sha}
+          data={'version':'2.0.12','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.12.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.11 update manifest'
+          git commit -m 'Publish v2.0.12 update manifest'
           git pull --rebase origin main
           git push
