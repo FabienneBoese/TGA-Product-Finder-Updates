@@ -34,7 +34,7 @@ jobs:
            values=[clean(product).upper(),clean(model).upper()]
            hits=set()
            for val in values:
-            normalized=re.sub(r'[.‐‑‒–—−_\\\\s]+','-',val)
+            normalized=re.sub(r'[.‐‑‒–—−_\s]+','-',val)
             for code in ('FKRS-EU','FK2-EU','TVE'):
              if re.search(r'(?<![A-Z0-9])'+re.escape(code)+r'(?![A-Z0-9])',normalized):
               hits.add(code)
