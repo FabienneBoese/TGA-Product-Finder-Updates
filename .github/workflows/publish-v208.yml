@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.1.1 Model Recognition
+name: Publish TGA Product Finder v2.1.2 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga211
-          unzip -q TGA_Product_Finder_Update_v2.1.0.zip -d /tmp/tga211
+          mkdir -p /tmp/tga212
+          unzip -q TGA_Product_Finder_Update_v2.1.1.zip -d /tmp/tga212
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga211/app.py')
+          p=Path('/tmp/tga212/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.1.0"')==1
-          s=s.replace('APP_VERSION = "2.1.0"','APP_VERSION = "2.1.1"',1)
+          assert s.count('APP_VERSION = "2.1.1"')==1
+          s=s.replace('APP_VERSION = "2.1.1"','APP_VERSION = "2.1.2"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -274,28 +274,59 @@ jobs:
           print('PASS: structured technical type extraction and unverified family separation')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga211/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga212/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
+          # Pflichtpruefungen: Freigabe nur bei erfolgreichen Regressionstests.
+          import re, zipfile
+          function=ast.parse(s).body
+          matching=[n for n in function if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web']
+          assert len(matching)==1, 'Suchfunktion fehlt oder mehrfach vorhanden'
+          source=ast.get_source_segment(s,matching[0])
+          assert source and 'PDF-Typenextraktion:' in source, 'Typenextraktion fehlt'
+          assert 'keine automatische Variantenfreigabe' in source, 'Freigabesperre fehlt'
+          assert 'Basic-E und Basic 50 bleiben getrennt' in source, 'Variantentrennung fehlt'
+          assert 'keine belegte Zuordnung zur Produktfamilie' in source, 'Familienzuordnung nicht abgesichert'
+          patterns=[n for n in ast.walk(matching[0]) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='type_pattern' for t in n.targets)]
+          assert len(patterns)==1, 'Typenmuster fehlt'
+          type_regex=ast.literal_eval(patterns[0].value.args[0])
+          regex=re.compile(type_regex,re.I)
+          assert regex.search('ERE10 AK3'), 'KERMI ERE10 nicht erkannt'
+          assert regex.search('E0E10 AK3'), 'KERMI E0E10 nicht erkannt'
+          assert not regex.search('DIN EN 61008-1'), 'Norm faelschlich als Typ erkannt'
+          assert not regex.search('Basic 50'), 'Produktfamilie faelschlich als Typ erkannt'
+          assert 'PDF-Zuordnung: ungeprüft' in source, 'Pruefstatus fehlt'
+          print('PASS: 10 Regressionstests fuer Typen, Varianten und Pruefstatus')
           PY
-          (cd /tmp/tga211 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.1.1.zip
+          (cd /tmp/tga212 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.1.2.zip
+          python3 - <<'PY'
+          import zipfile,ast
+          path='TGA_Product_Finder_Update_v2.1.2.zip'
+          with zipfile.ZipFile(path) as z:
+              names=set(z.namelist())
+              assert {'app.py','version.json','TGA_Updater.ps1'} <= names, 'Update-Dateien fehlen'
+              app=z.read('app.py').decode('utf-8')
+              assert 'APP_VERSION = "2.1.2"' in app, 'Falsche App-Version'
+              ast.parse(app)
+          print('PASS: ZIP-Paket, App-Version und Python-Syntax')
+          PY
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.1.1.zip
-          git commit -m 'Build TGA Product Finder v2.1.1'
+          git add TGA_Product_Finder_Update_v2.1.2.zip
+          git commit -m 'Build TGA Product Finder v2.1.2'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.1.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.1.zip','sha256':sha}
+          data={'version':'2.1.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.2.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.1.1 update manifest'
+          git commit -m 'Publish v2.1.2 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
