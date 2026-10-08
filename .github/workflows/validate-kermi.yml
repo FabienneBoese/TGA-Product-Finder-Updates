@@ -11,7 +11,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import requests
-          url='https://www.duschmeister.de/images/products_upload/Montageanleitung_12334-2_doc1.pdf'
+          url='https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf'
           try:
               r=requests.get(url,timeout=25,headers={'User-Agent':'Mozilla/5.0'})
               print('HTTP',r.status_code,'bytes',len(r.content),'signature',repr(r.content[:8]))
