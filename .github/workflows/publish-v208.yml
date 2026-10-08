@@ -53,7 +53,7 @@ jobs:
            indent+' st.dataframe(pd.DataFrame(universal_product_search_patterns(m,p,a)),hide_index=True,width="stretch")',
           ]
           lines[idx:idx]=addition
-          s='\\n'.join(lines)+'\\n'
+          s='\n'.join(lines)+'\n'
           assert 'universal_product_search_patterns(m,p,a)' in s
           print('PASS: reusable universal search patterns visible in generic product search')
           p.write_text(s,encoding='utf-8')
