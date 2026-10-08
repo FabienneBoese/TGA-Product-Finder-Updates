@@ -28,9 +28,6 @@ jobs:
           old="st.caption('Für noch nicht unterstützte Hersteller: Offizielle Produktseite eintragen. Gefundene Dokumente werden als ungeprüfte Kandidaten angezeigt, nicht freigegeben.')"
           assert s.count(old)==1
           s=s.replace(old,"st.caption('Für alle weiteren Hersteller: Zuerst Produktseite und Dokumente automatisch suchen anklicken. Eine manuelle Herstelleradresse ist nur als Alternative nötig. PDF-Kandidaten bleiben prüfpflichtig.')",1)
-          old="if st.button('Produktseite und Dokumente automatisch suchen',key=f'universal-auto-{cid}'):"
-          assert s.count(old)==1
-          s=s.replace(old,"if st.button('Produktseite und Dokumente automatisch suchen',key=f'universal-auto-{cid}',type='primary'):",1)
           old="if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':"
           assert s.count(old)==1
           s=s.replace(old,"if 'kermi' in clean(m).lower() and 'basic' in clean(p+' '+a).lower():\n    st.caption('KERMI Basic-E: Modell- und Ausführungszuordnung vor Freigabe prüfen; nur verifizierte offizielle PDFs offline speichern.')\n   "+old,1)
