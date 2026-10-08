@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.38 Model Recognition
+name: Publish TGA Product Finder v2.1.0 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga238
-          unzip -q TGA_Product_Finder_Update_v2.0.37.zip -d /tmp/tga238
+          mkdir -p /tmp/tga210
+          unzip -q TGA_Product_Finder_Update_v2.0.38.zip -d /tmp/tga210
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga238/app.py')
+          p=Path('/tmp/tga210/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.37"')==1
-          s=s.replace('APP_VERSION = "2.0.37"','APP_VERSION = "2.0.38"',1)
+          assert s.count('APP_VERSION = "2.0.38"')==1
+          s=s.replace('APP_VERSION = "2.0.38"','APP_VERSION = "2.1.0"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -131,6 +131,31 @@ jobs:
            "     if len(candidate_hits)>=12:break",
            "    notes.append(\"PDF-Produktkandidaten: \"+str(len(candidate_hits))+\" unterschiedliche Textzeilen (ungeprüft)\")",
            "    for page_no,line in candidate_hits[:8]:notes.append(\"PDF-Kandidat Seite \"+str(page_no)+\": \"+line[:110])",
+           "    # Evidence scoring is deliberately conservative and does not grant approval.",
+           "    def document_evidence_score(text_pages,make,designation,variant):",
+           "     import unicodedata",
+           "     def tokens(s):",
+           "      s=unicodedata.normalize(\"NFKC\",str(s)).casefold()",
+           "      return [v for v in re.split(r\"[^a-z0-9]+\",s) if len(v)>=2]",
+           "     flat=\" \".join(text_pages)",
+           "     flat_tokens=tokens(flat)",
+           "     doc_set=set(flat_tokens)",
+           "     make_tokens=tokens(make);name_tokens=tokens(designation);variant_tokens=tokens(variant)",
+           "     make_hits=[v for v in make_tokens if v in doc_set]",
+           "     name_hits=[v for v in name_tokens if v in doc_set]",
+           "     variant_hits=[v for v in variant_tokens if v in doc_set]",
+           "     normalized=re.sub(r\"[^a-z0-9]+\",\"\",flat.casefold())",
+           "     exact_name=bool(name_tokens) and \"\".join(name_tokens) in normalized",
+           "     exact_variant=bool(variant_tokens) and \"\".join(variant_tokens) in normalized",
+           "     conflict=bool(basic_e and re.search(r\"(?i)basic\\s*[- ]?50\",flat) and not re.search(r\"(?i)basic\\s*[- ]?e\\b\",flat))",
+           "     score=min(95,25*bool(make_hits)+20*bool(name_hits)+20*bool(variant_hits)+15*exact_name+15*exact_variant)",
+           "     if conflict:score=min(score,20)",
+           "     return score,make_hits,name_hits,variant_hits,conflict",
+           "    score,make_hits,name_hits,variant_hits,conflict=document_evidence_score(page_texts,manufacturer,product,model)",
+           "    notes.append(\"PDF-Produktabgleich: \"+str(score)+\" % Indizienwert (keine Freigabe); Hersteller \"+str(len(make_hits))+\", Produkt \"+str(len(name_hits))+\", Modell \"+str(len(variant_hits))+\" passende Tokens\")",
+           "    if conflict:notes.append(\"PDF-Konflikt: Basic 50 ohne Basic-E-Nachweis; keine Zuordnung\")",
+           "    if score<60:notes.append(\"PDF-Zuordnung: ungeprüft; Produktidentität nicht ausreichend belegt\")",
+           "    else:notes.append(\"PDF-Zuordnung: Kandidat zur manuellen Prüfung; keine automatische Freigabe\")",
            "    if matches:doc_evidence.extend(matches)",
            "    if not matches and len(pdf_text)>0:notes.append(\"PDF-Produktsuche: Text vorhanden, aber keine eindeutige Basic-E-Bezeichnung\")",
            "    if matches:",
@@ -231,31 +256,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: generic document candidates with page references and conservative matching')
+          print('PASS: conservative document evidence scoring')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga238/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga210/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga238 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.38.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.38.zip
+          (cd /tmp/tga210 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.1.0.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.38.zip
-          git commit -m 'Build TGA Product Finder v2.0.38'
+          git add TGA_Product_Finder_Update_v2.1.0.zip
+          git commit -m 'Build TGA Product Finder v2.1.0'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.38.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.0.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.38','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.38.zip','sha256':sha}
+          data={'version':'2.1.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.0.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.38 update manifest'
+          git commit -m 'Publish v2.1.0 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
