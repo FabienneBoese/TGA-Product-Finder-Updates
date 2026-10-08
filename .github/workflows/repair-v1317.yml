@@ -1,4 +1,4 @@
-name: Publish v1.9.1 project document linking
+name: Publish v2.0.0 project document linking
 on:
   push:
     paths:
@@ -13,56 +13,64 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga191
-          unzip -q TGA_Product_Finder_Update_v1.9.0.zip -d /tmp/tga191
+          mkdir -p /tmp/tga200
+          unzip -q TGA_Product_Finder_Update_v1.9.1.zip -d /tmp/tga200
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga191/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.9.0"')==1
-          s=s.replace('APP_VERSION = "1.9.0"','APP_VERSION = "1.9.1"',1).replace('persistent_update_install_v190','persistent_update_install_v191',1)
-          assert s.count("if _tga_page=='📁 Projektunterlagen':")==1
-          s=s.replace("if _tga_page=='📁 Projektunterlagen':","def refresh_project_upload_links(con,project):\n \"\"\"Re-evaluate stored file evidence against the current component inventory.\"\"\"\n import hashlib\n from pathlib import Path\n import pandas as pd\n import io,zipfile,xml.etree.ElementTree as ET\n con.execute('CREATE TABLE IF NOT EXISTS project_uploads(id INTEGER PRIMARY KEY,project TEXT NOT NULL,filename TEXT NOT NULL,sha256 TEXT NOT NULL,path TEXT NOT NULL,uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(project,sha256))')\n con.execute('CREATE TABLE IF NOT EXISTS project_upload_links(upload_id INTEGER NOT NULL,component_id INTEGER NOT NULL,score INTEGER NOT NULL,confirmed INTEGER DEFAULT 0,PRIMARY KEY(upload_id,component_id))')\n items=con.execute('SELECT id,filename,path FROM project_uploads WHERE project=?',(project,)).fetchall()\n components=con.execute('SELECT id,manufacturer,product,article_no FROM components WHERE project=?',(project,)).fetchall()\n norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())\n for uid,name,path in items:\n  if not os.path.isfile(path):continue\n  content=''\n  ext=Path(name).suffix.lower()\n  try:\n   if ext=='.txt':content=Path(path).read_text(encoding='utf-8',errors='replace')\n   elif ext=='.pdf':\n    from pypdf import PdfReader\n    reader=PdfReader(path);content=' '.join((page.extract_text() or '') for page in reader.pages[:50])\n   elif ext in ('.xlsx','.xlsm'):\n    sheets=pd.read_excel(path,sheet_name=None,header=None,nrows=500)\n    content=' '.join(' '.join(df.fillna('').astype(str).to_numpy().flatten()) for df in sheets.values())\n   elif ext=='.docx':\n    with zipfile.ZipFile(path) as archive:\n     xml=ET.fromstring(archive.read('word/document.xml'))\n     content=' '.join(n.text or '' for n in xml.iter() if n.tag.endswith('}t'))\n  except Exception:pass\n  hay=norm(name+' '+content[:250000])\n  for cid,m,p,a in components:\n   score=0\n   if len(norm(m))>=4 and norm(m) in hay:score+=25\n   if len(norm(a))>=5 and norm(a) in hay:score+=65\n   if len(norm(p))>=7 and norm(p) in hay:score+=35\n   if score>=60:\n    con.execute('INSERT INTO project_upload_links(upload_id,component_id,score,confirmed) VALUES(?,?,?,0) ON CONFLICT(upload_id,component_id) DO UPDATE SET score=excluded.score',(uid,cid,min(score,100)))\n  con.execute('DELETE FROM project_upload_links WHERE upload_id=? AND component_id NOT IN (SELECT id FROM components WHERE project=?)',(uid,project))\n con.commit()\n\ndef project_uploads_for_component(con,project,cid):\n \"\"\"One visible row per binary content, regardless of upload filename.\"\"\"\n import hashlib\n files=con.execute('SELECT u.id,u.filename,u.path,u.sha256,l.score,l.confirmed FROM project_uploads u JOIN project_upload_links l ON l.upload_id=u.id WHERE u.project=? AND l.component_id=? ORDER BY l.score DESC',(project,cid)).fetchall()\n known=set()\n for (path,) in con.execute('SELECT local_path FROM documents WHERE component_id=? AND local_path IS NOT NULL AND local_path != \"\"',(cid,)):\n  if os.path.isfile(path):\n   try:\n    with open(path,'rb') as stream:known.add(hashlib.sha256(stream.read()).hexdigest())\n   except OSError:pass\n result=[]\n for item in files:\n  if item[3] not in known and os.path.isfile(item[2]):\n   result.append(item);known.add(item[3])\n return result\n\n"+"if _tga_page=='📁 Projektunterlagen':",1)
-          anchor=" st.markdown('**Gespeicherte Projektdateien und Zuordnungsvorschläge**')"
-          assert s.count(anchor)==1
-          s=s.replace(anchor," refresh_project_upload_links(con,project)\n"+anchor,1)
-          anchor2="   st.write(f'**Bewertung:** {stat}')"
-          assert s.count(anchor2)==1
-          ui="""   _linked_uploads=project_uploads_for_component(con,project,cid)
-             if _linked_uploads:
-              st.markdown('**Zugeordnete individuelle Projektunterlagen**')
-              for _uid,_filename,_path,_digest,_score,_confirmed in _linked_uploads:
-               _a,_b=st.columns([4,1])
-               _a.write(_filename+' · '+str(_score)+' % · '+('Zuordnung bestätigt' if _confirmed else 'Zuordnung prüfen'))
-               with open(_path,'rb') as _f:_b.download_button('Datei öffnen',_f.read(),file_name=_filename,key=f'linked_upload_{cid}_{_uid}')
-          """
-          s=s.replace(anchor2,anchor2+'\n'+ui.rstrip(),1)
-          # Reindex after import is already automatic on entering the upload area; also refresh when document view is opened.
-          anchor3="if _tga_page=='📊 Dokumentenübersicht':"
-          assert s.count(anchor3)==1
-          s=s.replace(anchor3,anchor3+"\n refresh_project_upload_links(con,project)",1)
+          p=Path('/tmp/tga200/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.9.1"')==1
+          s=s.replace('APP_VERSION = "1.9.1"','APP_VERSION = "2.0.0"',1)
+          s=s.replace('persistent_update_install_v191','persistent_update_install_v200',1)
+          # Strengthen matching against punctuation variants and require distinguishing evidence.
+          old="  hay=norm(name+' '+content[:250000])\\n  for cid,m,p,a in components:\\n   score=0\\n   if len(norm(m))>=4 and norm(m) in hay:score+=25\\n   if len(norm(a))>=5 and norm(a) in hay:score+=65\\n   if len(norm(p))>=7 and norm(p) in hay:score+=35\\n   if score>=60:"
+          new="""  hay=norm(name+' '+content[:250000])
+  for cid,m,p,a in components:
+   manufacturer=norm(m)
+   article=norm(a)
+   product=norm(p)
+   score=0
+   manufacturer_found=len(manufacturer)>=4 and manufacturer in hay
+   article_found=len(article)>=5 and article in hay
+   product_found=len(product)>=7 and product in hay
+   if manufacturer_found:score+=25
+   if article_found:score+=65
+   if product_found:score+=35
+   # Article/model match without a matching manufacturer can be ambiguous.
+   if not manufacturer_found and not product_found:score=min(score,59)
+   if score>=60:"""
+          assert s.count(old)==1,'recognition anchor not found'
+          s=s.replace(old,new,1)
+          # Distinguish exact product evidence from a merely plausible match.
+          old_ui="_a.write(_filename+' · '+str(_score)+' % · '+('Zuordnung bestätigt' if _confirmed else 'Zuordnung prüfen'))"
+          new_ui="_a.write(_filename+' · '+str(_score)+' % · '+('Zuordnung bestätigt' if _confirmed else ('Produkt eindeutig zugeordnet – Prüfung offen' if _score>=90 else 'Produktfamilie/Zuordnung prüfen')))"
+          assert s.count(old_ui)==1
+          s=s.replace(old_ui,new_ui,1)
+          # Do not auto-approve: preserve confirmed state and existing review process.
+          assert 'confirmed=excluded.confirmed' not in s
+          print('PASS recognition: manufacturer/model/product evidence, ambiguous model guard, reviewed status retained')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga191/version.json').write_text(json.dumps({'version':'1.9.1'})+'\n')
-          print('PASS syntax: reindex on opening either view, content hash duplicate suppression, linked documents on component cards')
+          Path('/tmp/tga200/version.json').write_text(json.dumps({'version':'2.0.0'})+'\n')
+          print('PASS syntax: stronger project-document product recognition and status labels')
           
           PY
-          (cd /tmp/tga191 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.9.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.9.1.zip
+          (cd /tmp/tga200 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.0.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.9.1.zip
-          git commit -m 'Build v1.9.1 project linking'
+          git add TGA_Product_Finder_Update_v2.0.0.zip
+          git commit -m 'Build v2.0.0 project linking'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.9.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.0.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.9.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.9.1.zip','sha256':sha}
+          data={'version':'2.0.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.0.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.9.1 manifest'
+          git commit -m 'Publish v2.0.0 manifest'
           git pull --rebase origin main
           git push
