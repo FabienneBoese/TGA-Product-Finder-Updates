@@ -32,7 +32,6 @@ jobs:
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
           scope={}
-          exec('import re\\n'+fn.replace('universal_docs_from_official_page(manufacturer,product,model,url)','(url,[{\\'test\\':1}])'),{'clean':lambda x:str(x),'requests':__import__('requests'),'BeautifulSoup':__import__('bs4').BeautifulSoup},scope) if False else None
           assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','silentbox sb 125 a')
           assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','sb-125-a')
           Path('/tmp/tga181/version.json').write_text(json.dumps({'version':'1.8.1'})+'\n')
