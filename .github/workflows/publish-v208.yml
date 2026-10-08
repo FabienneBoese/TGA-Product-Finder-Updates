@@ -296,20 +296,20 @@ jobs:
           marker="def db():"
           assert s.count(marker)==1
           helper="""def classify_component_identifier(manufacturer, product, value):
- import re
- maker=str(manufacturer or '').strip().casefold()
- name=str(product or '').strip().casefold()
- raw=str(value or '').strip()
- normalized=re.sub(r'\\s+',' ',raw.upper())
- if 'helios' in maker and re.fullmatch(r'SB\\s*\\d{2,4}\\s*[A-Z]',normalized):
-  return (' '.join(re.findall(r'[A-Z]+|\\d+',normalized)), '', 'type')
- if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\\-][A-Z0-9]+)*',normalized):
-  return (normalized, '', 'type')
- if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\\s*150\\s*U|800)',normalized):
-  return (normalized, '', 'type')
- return ('',raw,'unclassified')
+           import re
+           maker=str(manufacturer or '').strip().casefold()
+           name=str(product or '').strip().casefold()
+           raw=str(value or '').strip()
+           normalized=re.sub(r'\\s+',' ',raw.upper())
+           if 'helios' in maker and re.fullmatch(r'SB\\s*\\d{2,4}\\s*[A-Z]',normalized):
+            return (' '.join(re.findall(r'[A-Z]+|\\d+',normalized)), '', 'type')
+           if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\\-][A-Z0-9]+)*',normalized):
+            return (normalized, '', 'type')
+           if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\\s*150\\s*U|800)',normalized):
+            return (normalized, '', 'type')
+           return ('',raw,'unclassified')
 
-"""
+          """
           s=s.replace(marker,helper+marker,1)
           # Vorhandene Daten ohne Loeschung und ohne Neuimport migrieren.
           schema_lines=[line for line in s.splitlines() if "if 'model_type' not in ccols:" in line]
