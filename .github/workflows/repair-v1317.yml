@@ -53,7 +53,7 @@ jobs:
              st.caption('Manuelle Modellauswahl nur für diese Dokumentensuche; keine automatische Dokumentenfreigabe.')
             elif product_key(m,_search_product) not in PRODUCTS:
              st.warning('TROX-Modell nicht eindeutig erkannt. Bitte oben das tatsächlich verbaute Modell auswählen.')
-   auto="""
+             auto="""
           s=s.replace(old,new,1)
           assert s.count('source,docs=find_docs(m,_search_product)')==1
           assert s.count("st.selectbox('TROX-Modell für Dokumentensuche'")==1
