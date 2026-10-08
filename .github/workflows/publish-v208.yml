@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.21 Offline Save
+name: Publish TGA Product Finder v2.0.21 Model Recognition
 on:
   push:
     paths:
