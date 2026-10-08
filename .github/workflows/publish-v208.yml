@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.33 Model Recognition
+name: Publish TGA Product Finder v2.0.34 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga233
-          unzip -q TGA_Product_Finder_Update_v2.0.32.zip -d /tmp/tga233
+          mkdir -p /tmp/tga234
+          unzip -q TGA_Product_Finder_Update_v2.0.33.zip -d /tmp/tga234
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga233/app.py')
+          p=Path('/tmp/tga234/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.32"')==1
-          s=s.replace('APP_VERSION = "2.0.32"','APP_VERSION = "2.0.33"',1)
+          assert s.count('APP_VERSION = "2.0.33"')==1
+          s=s.replace('APP_VERSION = "2.0.33"','APP_VERSION = "2.0.34"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -110,7 +110,22 @@ jobs:
            " notes.append(\"Sitemap-Diagnose: \"+str(xml_count)+\" XML-Sitemaps, \"+str(discovered)+\" deutsche Sitemap-URLs, \"+str(nav)+\" Navigations-Startseiten, \"+str(len(ranked))+\" Modell-URL-Kandidaten\")",
            " notes.append(\"Sitemap-Abrufe: \"+\"; \".join(attempts[:12]))",
            " if errors:notes.append(\"Sitemap-Fehler: \"+\"; \".join(errors[:5]))",
+           " content_checked=0;content_matches=[]",
+           " if basic_e:",
+           "  keywords=(\"heizkoerper\",\"heizkörper\",\"badheiz\",\"badheizkoerper\",\"radiator\",\"bad-und-design\",\"basic\",\"elektro\",\"electric\",\"handtuch\")",
+           "  pool=[u for u in candidates if any(k in unquote(urlparse(u).path).casefold() for k in keywords)]",
+           "  pool=sorted(pool,key=lambda u:(0 if \"basic\" in u.casefold() else 1,0 if \"bad\" in u.casefold() or \"heiz\" in u.casefold() else 1,len(u)))",
+           "  for url in pool[:32]:",
+           "   if url in ranked:continue",
+           "   r=fetch(url)",
+           "   if r is None or \"html\" not in r.headers.get(\"content-type\",\"\").lower():continue",
+           "   content_checked+=1;soup=BeautifulSoup(r.text,\"html.parser\")",
+           "   title=soup.title.get_text(\" \",strip=True) if soup.title else \"\"",
+           "   headings=\" \".join(h.get_text(\" \",strip=True) for h in soup.select(\"h1,h2,h3\")[:12])",
+           "   if re.search(r\"basic\\s*[- ]?e(?![a-z0-9])\",title+\" \"+headings,re.I):content_matches.append((url,soup))",
+           "  notes.append(\"Inhaltssuche: \"+str(len(pool))+\" relevante URL-Kandidaten, \"+str(content_checked)+\" Seiten geprüft, \"+str(len(content_matches))+\" Basic-E-Titel-/Überschriftentreffer\")",
            " validated=[]",
+           " validated.extend(content_matches)",
            " for url in ranked[:8]:",
            "  r=fetch(url)",
            "  if r is None or \"html\" not in r.headers.get(\"content-type\",\"\").lower():continue",
@@ -120,7 +135,7 @@ jobs:
            "  evidence=title+\" \"+heading",
            "  if basic_e and not re.search(r\"basic\\s*[- ]?e(?![a-z0-9])\",evidence,re.I):continue",
            "  if not basic_e and not all(t in evidence.casefold() for t in terms):continue",
-           "  validated.append((url,soup))",
+           "  if url not in [x[0] for x in validated]:validated.append((url,soup))",
            " found=[];seen=set()",
            " for page,soup in validated:",
            "  for a in soup.select(\"a[href]\"):",
@@ -137,31 +152,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: German sitemap prioritized and localized XML links selected')
+          print('PASS: bounded KERMI page-content discovery and title checks')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga233/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga234/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga233 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.33.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.33.zip
+          (cd /tmp/tga234 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.34.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.34.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.33.zip
-          git commit -m 'Build TGA Product Finder v2.0.33'
+          git add TGA_Product_Finder_Update_v2.0.34.zip
+          git commit -m 'Build TGA Product Finder v2.0.34'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.33.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.34.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.33','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.33.zip','sha256':sha}
+          data={'version':'2.0.34','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.34.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.33 update manifest'
+          git commit -m 'Publish v2.0.34 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
