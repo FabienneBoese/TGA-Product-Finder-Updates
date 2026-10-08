@@ -44,7 +44,7 @@ jobs:
           assert s.count('persistent_update_install_v154')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga154/version.json').write_text(json.dumps({'version':'1.5.3'},indent=2)+'\n',encoding='utf-8')
+          Path('/tmp/tga154/version.json').write_text(json.dumps({'version':'1.5.4'},indent=2)+'\n',encoding='utf-8')
           print('PASS: Python syntax, sidebar navigation, two page routes, update button retained')
           PY
           (cd /tmp/tga154 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.4.zip" app.py version.json TGA_Updater.ps1)
@@ -59,7 +59,7 @@ jobs:
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.5.3','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.4.zip','sha256':sha}
+          data={'version':'1.5.4','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.4.zip','sha256':sha}
           open('update_manifest.json','w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
