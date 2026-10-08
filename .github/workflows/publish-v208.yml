@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.37 Model Recognition
+name: Publish TGA Product Finder v2.0.38 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga237
-          unzip -q TGA_Product_Finder_Update_v2.0.36.zip -d /tmp/tga237
+          mkdir -p /tmp/tga238
+          unzip -q TGA_Product_Finder_Update_v2.0.37.zip -d /tmp/tga238
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga237/app.py')
+          p=Path('/tmp/tga238/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.36"')==1
-          s=s.replace('APP_VERSION = "2.0.36"','APP_VERSION = "2.0.37"',1)
+          assert s.count('APP_VERSION = "2.0.37"')==1
+          s=s.replace('APP_VERSION = "2.0.37"','APP_VERSION = "2.0.38"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -104,6 +104,33 @@ jobs:
            "    except Exception as exc:doc_errors.append(\"PDF-Textfehler: \"+type(exc).__name__)",
            "   if pdf_text:",
            "    matches=sorted(set(re.findall(r\"basic[\\s\\u00ad\\-\\u2010-\\u2015]*e(?![a-z0-9])(?:[\\s\\-]*[a-z0-9]{1,10})?\",pdf_text,re.I)))[:8]",
+           "    # Manufacturer-neutral candidate discovery from text; evidence only, not an assignment.",
+           "    import unicodedata",
+           "    def normalize(value):",
+           "     value=unicodedata.normalize(\"NFKC\",str(value)).casefold()",
+           "     return re.sub(r\"[^a-z0-9]+\",\"\",value)",
+           "    expected=[x for x in (product,model) if len(normalize(x))>=4]",
+           "    manufacturer_key=normalize(manufacturer)",
+           "    manufacturer_pages=[i+1 for i,t in enumerate(page_texts) if manufacturer_key and manufacturer_key in normalize(t)]",
+           "    notes.append(\"PDF-Herstellerabgleich: \"+str(len(manufacturer_pages))+\" Textseiten mit Herstellerhinweis\")",
+           "    if expected:",
+           "     for term in expected[:2]:",
+           "      pages=[i+1 for i,t in enumerate(page_texts) if normalize(term) in normalize(t)]",
+           "      notes.append(\"PDF-Abgleich \"+repr(term[:35])+\": \"+str(len(pages))+\" Seiten mit exakter normalisierter Zeichenfolge\"+(\", Seiten \"+\", \".join(map(str,pages[:5])) if pages else \"\"))",
+           "    candidate_hits=[];candidate_seen=set()",
+           "    for page_no,page_text in enumerate(page_texts,1):",
+           "     for raw_line in page_text.splitlines()[:500]:",
+           "      line=\" \".join(raw_line.split())[:160]",
+           "      if not 4<=len(line)<=120:continue",
+           "      if not re.search(r\"(?i)(?:basic|typ\\s*[:/]|modell\\s*[:/]|model\\s*[:/]|art(?:ikel)?\\.?\\s*[- ]?nr\\.?|\\b[A-Z]{2,5}[- /]?\\d{2,6}\\b)\",line):continue",
+           "      if re.search(r\"(?i)https?://|www\\.|copyright|telefon|fax|seite\\s+\\d\",line):continue",
+           "      key=normalize(line)",
+           "      if key in candidate_seen:continue",
+           "      candidate_seen.add(key);candidate_hits.append((page_no,line))",
+           "      if len(candidate_hits)>=12:break",
+           "     if len(candidate_hits)>=12:break",
+           "    notes.append(\"PDF-Produktkandidaten: \"+str(len(candidate_hits))+\" unterschiedliche Textzeilen (ungeprüft)\")",
+           "    for page_no,line in candidate_hits[:8]:notes.append(\"PDF-Kandidat Seite \"+str(page_no)+\": \"+line[:110])",
            "    if matches:doc_evidence.extend(matches)",
            "    if not matches and len(pdf_text)>0:notes.append(\"PDF-Produktsuche: Text vorhanden, aber keine eindeutige Basic-E-Bezeichnung\")",
            "    if matches:",
@@ -204,31 +231,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: PDF page counts, extraction diagnostics, flexible product name recognition')
+          print('PASS: generic document candidates with page references and conservative matching')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga237/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga238/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga237 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.37.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.37.zip
+          (cd /tmp/tga238 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.38.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.38.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.37.zip
-          git commit -m 'Build TGA Product Finder v2.0.37'
+          git add TGA_Product_Finder_Update_v2.0.38.zip
+          git commit -m 'Build TGA Product Finder v2.0.38'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.37.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.38.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.37','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.37.zip','sha256':sha}
+          data={'version':'2.0.38','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.38.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.37 update manifest'
+          git commit -m 'Publish v2.0.38 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
