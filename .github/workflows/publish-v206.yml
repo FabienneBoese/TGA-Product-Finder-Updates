@@ -65,12 +65,12 @@ jobs:
           needle="    st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')"
           assert s.count(needle)==1, 'HELIOS UI not found'
           insertion="""    if st.button('HELIOS-PDFs automatisch über Suchindex ermitteln',key=f'helios_index_{cid}'):
-             _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
-             st.session_state[f'universal-hits-{cid}']=_hits
-             st.session_state[f'universal-source-{cid}']='HELIOS-Suchindex'
-             if _hits:st.success(f'{len(_hits)} modellbezogene PDF-Kandidaten gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
-             else:st.warning('Keine eindeutig modellbezogenen PDF-Links im Suchindex gefunden. Keine fremden Dokumente zugeordnet.')
-             if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+      _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+      st.session_state[f'universal-hits-{cid}']=_hits
+      st.session_state[f'universal-source-{cid}']='HELIOS-Suchindex'
+      if _hits:st.success(f'{len(_hits)} modellbezogene PDF-Kandidaten gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+      else:st.warning('Keine eindeutig modellbezogenen PDF-Links im Suchindex gefunden. Keine fremden Dokumente zugeordnet.')
+      if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
           """
           s=s.replace(needle,insertion+needle,1)
           p.write_text(s,encoding='utf-8')
