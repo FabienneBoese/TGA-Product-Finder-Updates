@@ -27,51 +27,51 @@ jobs:
           start=s.index('def read_excel(')
           end=s.index('def score(',start)
           new_import="""def read_excel(data):
- raw=pd.read_excel(io.BytesIO(data),header=None)
- h=detect_header(raw)
- df=pd.read_excel(io.BytesIO(data),header=h).dropna(axis=1,how='all').dropna(axis=0,how='all')
- aliases={
-  'Hersteller':['hersteller','hersteller/fabrikat','fabrikat'],
-  'Bezeichnung':['bezeichnung','produkt/bezeichnung','produkt','produktbezeichnung'],
-  'Typ / Modell':['typ/modell','typ','modell','typbezeichnung','modellbezeichnung'],
-  'Artikelnummer':['artikelnummer','artikel-nr.','artikel-nr','art.-nr.','art.-nr','bestellnummer','bestell-nr.','materialnummer'],
-  'Gewerk':['gewerk']
- }
- def normalize(x):return re.sub(r'\\s*[/]\\s*','/',clean(x).lower()).strip(' :')
- cols={normalize(c):c for c in df.columns}
- out=pd.DataFrame()
- for target,choices in aliases.items():
-  col=next((cols[c] for c in choices if c in cols),None)
-  out[target]=df[col].map(clean) if col is not None else ''
- out=out[(out.Hersteller!='')|(out.Bezeichnung!='')].reset_index(drop=True)
- if out.empty:raise ValueError('Keine Produktzeilen gefunden.')
- return out
+           raw=pd.read_excel(io.BytesIO(data),header=None)
+           h=detect_header(raw)
+           df=pd.read_excel(io.BytesIO(data),header=h).dropna(axis=1,how='all').dropna(axis=0,how='all')
+           aliases={
+            'Hersteller':['hersteller','hersteller/fabrikat','fabrikat'],
+            'Bezeichnung':['bezeichnung','produkt/bezeichnung','produkt','produktbezeichnung'],
+            'Typ / Modell':['typ/modell','typ','modell','typbezeichnung','modellbezeichnung'],
+            'Artikelnummer':['artikelnummer','artikel-nr.','artikel-nr','art.-nr.','art.-nr','bestellnummer','bestell-nr.','materialnummer'],
+            'Gewerk':['gewerk']
+           }
+           def normalize(x):return re.sub(r'\\s*[/]\\s*','/',clean(x).lower()).strip(' :')
+           cols={normalize(c):c for c in df.columns}
+           out=pd.DataFrame()
+           for target,choices in aliases.items():
+            col=next((cols[c] for c in choices if c in cols),None)
+            out[target]=df[col].map(clean) if col is not None else ''
+           out=out[(out.Hersteller!='')|(out.Bezeichnung!='')].reset_index(drop=True)
+           if out.empty:raise ValueError('Keine Produktzeilen gefunden.')
+           return out
 
-"""
+          """
           s=s[:start]+new_import+s[end:]
           start=s.index('def classify_component_identifier(')
           end=s.index('def db():',start)
           new_classifier="""def classify_component_identifier(manufacturer, product, value):
- import re
- maker=str(manufacturer or '').strip().casefold()
- raw=str(value or '').strip()
- normalized=re.sub(r'\\s+',' ',raw.upper())
- if not normalized:return ('','','empty')
- # Numerische Bestellnummern nicht automatisch in Typen umwandeln.
- if re.fullmatch(r'\\d{5,}(?:[.\\-]\\d+)*',normalized):return ('',raw,'article')
- if 'helios' in maker and re.fullmatch(r'(?:SB|SVS|RR|K|ELS)\\s*[-/]?\\s*\\d{2,4}(?:\\s*[-/]?\\s*[A-Z0-9]{1,4})?',normalized):
-  return (normalized,'','type')
- if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\\-][A-Z0-9]+)*',normalized):
-  return (normalized,'','type')
- if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\\s*150\\s*U|800)',normalized):
-  return (normalized,'','type')
- # Typische technische Typcodes mit Buchstaben und Ziffern, aber nur
- # wenn ein deutliches Modellpraefix vorhanden ist; sonst offen lassen.
- if re.fullmatch(r'[A-Z]{2,8}[- ]?\\d{2,5}(?:[- /][A-Z0-9]{1,6}){0,3}',normalized):
-  return (normalized,'','type_candidate')
- return ('',raw,'unclassified')
+           import re
+           maker=str(manufacturer or '').strip().casefold()
+           raw=str(value or '').strip()
+           normalized=re.sub(r'\\s+',' ',raw.upper())
+           if not normalized:return ('','','empty')
+           # Numerische Bestellnummern nicht automatisch in Typen umwandeln.
+           if re.fullmatch(r'\\d{5,}(?:[.\\-]\\d+)*',normalized):return ('',raw,'article')
+           if 'helios' in maker and re.fullmatch(r'(?:SB|SVS|RR|K|ELS)\\s*[-/]?\\s*\\d{2,4}(?:\\s*[-/]?\\s*[A-Z0-9]{1,4})?',normalized):
+            return (normalized,'','type')
+           if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\\-][A-Z0-9]+)*',normalized):
+            return (normalized,'','type')
+           if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\\s*150\\s*U|800)',normalized):
+            return (normalized,'','type')
+           # Typische technische Typcodes mit Buchstaben und Ziffern, aber nur
+           # wenn ein deutliches Modellpraefix vorhanden ist; sonst offen lassen.
+           if re.fullmatch(r'[A-Z]{2,8}[- ]?\\d{2,5}(?:[- /][A-Z0-9]{1,6}){0,3}',normalized):
+            return (normalized,'','type_candidate')
+           return ('',raw,'unclassified')
 
-"""
+          """
           s=s[:start]+new_classifier+s[end:]
           # Typ- und Artikelspalten aus Excel strikt getrennt speichern.
           old_lines=[line for line in s.splitlines() if "INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched,gewerk)" in line]
