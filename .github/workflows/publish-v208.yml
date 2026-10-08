@@ -41,7 +41,7 @@ jobs:
           marker="overview.append({'Status':docstatus.split()[0]"
           assert s.count(marker)==1
           a=s.index(marker)
-          b=s.index("\\n",a)
+          b=s.index(chr(10),a)
           line=s[a:b]
           assert "'Erkennung %':oconf" in line
           line=line.replace("'Erkennung %':oconf","'Erkennung %':min(oconf,85) if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else oconf")
