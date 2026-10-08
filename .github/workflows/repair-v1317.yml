@@ -23,7 +23,7 @@ jobs:
           s=s.replace('APP_VERSION = "1.9.1"','APP_VERSION = "2.0.0"',1)
           s=s.replace('persistent_update_install_v191','persistent_update_install_v200',1)
           # Strengthen matching against punctuation variants and require distinguishing evidence.
-          old="  hay=norm(name+' '+content[:250000])\\n  for cid,m,p,a in components:\\n   score=0\\n   if len(norm(m))>=4 and norm(m) in hay:score+=25\\n   if len(norm(a))>=5 and norm(a) in hay:score+=65\\n   if len(norm(p))>=7 and norm(p) in hay:score+=35\\n   if score>=60:"
+          old="  hay=norm(name+' '+content[:250000])\n  for cid,m,p,a in components:\n   score=0\n   if len(norm(m))>=4 and norm(m) in hay:score+=25\n   if len(norm(a))>=5 and norm(a) in hay:score+=65\n   if len(norm(p))>=7 and norm(p) in hay:score+=35\n   if score>=60:"
           new="""  hay=norm(name+' '+content[:250000])
   for cid,m,p,a in components:
    manufacturer=norm(m)
