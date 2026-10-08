@@ -14,14 +14,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/tga201
-          unzip -q TGA_Product_Finder_Update_v1.9.1.zip -d /tmp/tga201
+          unzip -q TGA_Product_Finder_Update_v2.0.0.zip -d /tmp/tga201
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
           p=Path('/tmp/tga201/app.py');s=p.read_text(encoding='utf-8')
           assert s.count('APP_VERSION = "2.0.0"')==1
-          s=s.replace('APP_VERSION = "1.9.1"','APP_VERSION = "2.0.0"',1)
-          s=s.replace('persistent_update_install_v191','persistent_update_install_v201',1)
+          s=s.replace('APP_VERSION = "2.0.0"','APP_VERSION = "2.0.1"',1)
+          s=s.replace('persistent_update_install_v200','persistent_update_install_v201',1)
           anchor="   st.write(f'**Bewertung:** {stat}')"
           assert s.count(anchor)==1
           extra="\n   if any(x in str(m).lower() for x in ('trox','helios','danfoss')):\n    import urllib.parse\n    _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)\n    _term='site:'+_domain+' '+str(m)+' '+str(a or p)\n    st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))\n    st.link_button('Hersteller-PDFs suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term+' Datenblatt Montageanleitung PDF'))"
@@ -29,7 +29,7 @@ jobs:
           print('PASS official manufacturer-scoped product and PDF search links')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga201/version.json').write_text(json.dumps({'version':'2.0.0'})+'\n')
+          Path('/tmp/tga201/version.json').write_text(json.dumps({'version':'2.0.1'})+'\n')
           print('PASS syntax: stronger project-document product recognition and status labels')
           
           PY
@@ -45,7 +45,7 @@ jobs:
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.1.zip','sha256':sha}
+          data={'version':'2.0.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.1.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
