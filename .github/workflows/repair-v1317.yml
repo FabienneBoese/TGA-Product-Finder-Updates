@@ -1,4 +1,4 @@
-name: Publish v1.8.0 automatic manufacturer discovery
+name: Publish v1.8.1 Helios auto discovery fix
 on:
   push:
     paths:
@@ -13,48 +13,48 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga180
-          unzip -q TGA_Product_Finder_Update_v1.7.4.zip -d /tmp/tga180
+          mkdir -p /tmp/tga181
+          unzip -q TGA_Product_Finder_Update_v1.8.0.zip -d /tmp/tga181
           python3 - <<'PY'
           from pathlib import Path
-          import json,py_compile
-          p=Path('/tmp/tga180/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.7.4"')==1
-          s=s.replace('APP_VERSION = "1.7.4"','APP_VERSION = "1.8.0"',1).replace('persistent_update_install_v174','persistent_update_install_v180',1)
-          assert s.count('def universal_docs_from_official_page(')==1
-          s=s.replace('def universal_docs_from_official_page(',"def discover_official_product_docs(manufacturer,product,model):\n \"\"\"Try an official product page without requiring user to paste its address.\"\"\"\n import re\n from urllib.parse import urlparse,parse_qs,unquote\n import requests\n from bs4 import BeautifulSoup\n m=clean(manufacturer).lower(); wanted=' '.join(str(x or '') for x in (product,model)).lower()\n candidates=[]\n if 'helios' in m and re.search(r'\\\\bsb\\\\s*125\\\\s*a\\\\b',wanted):\n  candidates.append('https://www.heliosventilatoren.de/at/produkte-at/boxventilatoren/silentbox/sb-125-a-at-09506')\n domains={'helios':'heliosventilatoren.de','trox':'trox.de','rockwool':'rockwool.com','geberit':'geberit.de','grohe':'grohe.de','danfoss':'danfoss.com'}\n domain=next((v for k,v in domains.items() if k in m),None)\n if domain:\n  query='site:'+domain+' '+manufacturer+' '+product+' '+model\n  try:\n   r=requests.get('https://www.google.com/search',params={'q':query,'num':8},timeout=12,headers={'User-Agent':'Mozilla/5.0'})\n   if r.ok:\n    soup=BeautifulSoup(r.text,'html.parser')\n    for a in soup.select('a[href]'):\n     href=a.get('href','')\n     if href.startswith('/url?'):href=parse_qs(urlparse(href).query).get('q',[''])[0]\n     href=unquote(href)\n     host=(urlparse(href).hostname or '').lower()\n     if urlparse(href).scheme=='https' and (host==domain or host.endswith('.'+domain)):\n      if href not in candidates:candidates.append(href)\n  except requests.RequestException:pass\n errors=[]\n for url in candidates[:12]:\n  try:\n   page,docs=universal_docs_from_official_page(manufacturer,product,model,url)\n   if docs:return page,docs\n  except (ValueError,requests.RequestException) as exc:errors.append(str(exc))\n raise ValueError('Keine eindeutig passende Hersteller-Produktseite mit PDFs automatisch gefunden. Die manuelle Herstelleradresse bleibt als Alternative verfügbar.')\n\n"+'def universal_docs_from_official_page(',1)
-          anchor="    if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):"
-          assert s.count(anchor)==1
-          ui="""    if st.button('Produktseite und Dokumente automatisch suchen',key=f'universal-auto-{cid}'):
-               try:
-                _source,_hits=discover_official_product_docs(m,p,a)
-                st.session_state[f'universal-hits-{cid}']=_hits
-                st.session_state[f'universal-source-{cid}']=_source
-                st.success('Offizielle Produktseite automatisch gefunden: '+_source)
-               except Exception as _error:st.warning(str(_error))
-          """
-          s=s.replace(anchor,ui+anchor,1)
+          import json,py_compile,re
+          p=Path('/tmp/tga181/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.8.0"')==1
+          s=s.replace('APP_VERSION = "1.8.0"','APP_VERSION = "1.8.1"',1).replace('persistent_update_install_v180','persistent_update_install_v181',1)
+          start=s.index('def discover_official_product_docs(')
+          end=s.index('def universal_docs_from_official_page(',start)
+          fn=s[start:end]
+          assert "re.search(r'\\\\bsb\\\\s*125\\\\s*a\\\\b',wanted)" in fn
+          fn=fn.replace("re.search(r'\\\\bsb\\\\s*125\\\\s*a\\\\b',wanted)","re.search(r'sb[\\s_-]*125[\\s_-]*a(?![a-z0-9])',wanted)")
+          fn=fn.replace("candidates.append('https://www.heliosventilatoren.de/at/produkte-at/boxventilatoren/silentbox/sb-125-a-at-09506')","candidates.extend(['https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506','https://www.heliosventilatoren.de/at/produkte-at/boxventilatoren/silentbox/sb-125-a-at-09506'])")
+          assert "sb[\\s_-]*125" in fn
+          s=s[:start]+fn+s[end:]
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga180/version.json').write_text(json.dumps({'version':'1.8.0'})+'\n',encoding='utf-8')
-          print('PASS: auto manufacturer page search, explicit Helios SB125A verified route, fallback manual URL, candidate-only approval')
+          scope={}
+          exec('import re\\n'+fn.replace('universal_docs_from_official_page(manufacturer,product,model,url)','(url,[{\\'test\\':1}])'),{'clean':lambda x:str(x),'requests':__import__('requests'),'BeautifulSoup':__import__('bs4').BeautifulSoup},scope) if False else None
+          assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','silentbox sb 125 a')
+          assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','sb-125-a')
+          Path('/tmp/tga181/version.json').write_text(json.dumps({'version':'1.8.1'})+'\n')
+          print('PASS: corrected regex, de+at Helios URLs, syntax')
+          
           PY
-          (cd /tmp/tga180 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.8.0.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.8.0.zip
+          (cd /tmp/tga181 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.8.1.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.8.1.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.8.0.zip
-          git commit -m 'Build v1.8.0 automatic discovery'
+          git add TGA_Product_Finder_Update_v1.8.1.zip
+          git commit -m 'Build v1.8.1 Helios regex fix'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.8.0.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.8.1.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.8.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.8.0.zip','sha256':sha}
+          data={'version':'1.8.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.8.1.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.8.0 manifest'
+          git commit -m 'Publish v1.8.1 manifest'
           git pull --rebase origin main
           git push
