@@ -1,4 +1,4 @@
-name: Publish v1.7.1 precise universal candidates
+name: Publish v1.7.2 product-page document context
 on:
   push:
     paths:
@@ -13,41 +13,114 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga171
-          unzip -q TGA_Product_Finder_Update_v1.7.0.zip -d /tmp/tga171
+          mkdir -p /tmp/tga172
+          unzip -q TGA_Product_Finder_Update_v1.7.1.zip -d /tmp/tga172
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga171/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.7.0"')==1
-          s=s.replace('APP_VERSION = "1.7.0"','APP_VERSION = "1.7.1"',1).replace('persistent_update_install_v170','persistent_update_install_v171',1)
+          p=Path('/tmp/tga172/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.7.1"')==1
+          s=s.replace('APP_VERSION = "1.7.1"','APP_VERSION = "1.7.2"',1).replace('persistent_update_install_v171','persistent_update_install_v172',1)
           start=s.index('def universal_docs_from_official_page(')
           end=s.index('def find_docs(manufacturer,product):',start)
-          s=s[:start]+"def universal_docs_from_official_page(manufacturer,product,model,page_url):\n \"\"\"Find document candidates with explicit product evidence; do not approve.\"\"\"\n from urllib.parse import urlparse,urljoin\n from bs4 import BeautifulSoup\n import requests,re,ipaddress,socket\n def safe_url(url,allowed_host=None):\n  u=urlparse(url)\n  if u.scheme!='https' or not u.hostname or u.username or u.password: raise ValueError('Nur gültige HTTPS-Herstellerseiten sind zulässig.')\n  host=u.hostname.lower().rstrip('.')\n  if allowed_host and not (host==allowed_host or host.endswith('.'+allowed_host)):raise ValueError('Link außerhalb der Herstellerdomain.')\n  if host=='localhost' or host.endswith(('.local','.internal','.localhost')):raise ValueError('Lokale Adressen sind nicht erlaubt.')\n  try:\n   for item in socket.getaddrinfo(host,443,type=socket.SOCK_STREAM):\n    ip=ipaddress.ip_address(item[4][0])\n    if not ip.is_global:raise ValueError('Nichtöffentliche Netzwerkadresse ist nicht erlaubt.')\n  except socket.gaierror:raise ValueError('Herstellerdomain nicht erreichbar.')\n  return host\n url=clean(page_url)\n root=safe_url(url)\n session=requests.Session()\n session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/1.7.1)'})\n def get_page(url):\n  response=session.get(url,timeout=18,allow_redirects=False)\n  for _ in range(4):\n   if response.status_code not in (301,302,303,307,308):break\n   target=urljoin(response.url,response.headers.get('Location',''))\n   safe_url(target,root)\n   response=session.get(target,timeout=18,allow_redirects=False)\n  response.raise_for_status()\n  safe_url(response.url,root)\n  if 'text/html' not in response.headers.get('content-type','text/html').lower():raise ValueError('Keine HTML-Produktseite.')\n  return response\n first=get_page(url)\n model_text=clean(model).lower()\n product_text=clean(product).lower()\n model_keys=[t for t in re.split(r'[^a-z0-9]+',model_text) if len(t)>=4 and t not in ('montage','produkt','geraet','gerät')]\n product_keys=[t for t in re.split(r'[^a-z0-9]+',product_text) if len(t)>=4 and t not in ('montage','produkt','geraet','gerät','helios','ventilator','lueftung')]\n keys=list(dict.fromkeys(model_keys+product_keys))\n if not keys:raise ValueError('Keine ausreichend konkrete Produkt- oder Modellkennung vorhanden.')\n seen_pages=set();seen_docs=set();queue=[(first.url,first.text,0)]\n out=[]\n while queue and len(seen_pages)<6:\n  current,html,depth=queue.pop(0)\n  if current in seen_pages:continue\n  seen_pages.add(current)\n  soup=BeautifulSoup(html,'html.parser')\n  for link in soup.find_all('a',href=True):\n   href=urljoin(current,link['href'])\n   try:safe_url(href,root)\n   except ValueError:continue\n   if href in seen_docs:continue\n   title=clean(link.get_text(' ',strip=True))\n   context=clean(link.parent.get_text(' ',strip=True))[:220] if link.parent else ''\n   blob=(title+' '+href).lower()\n   category=classify(title,href,'generic')\n   pdf=urlparse(href).path.lower().endswith('.pdf')\n   # A general download directory, KWL guide, or overview is not a product document.\n   if pdf and category!='Sonstiges':\n    evidence=[k for k in keys if k in blob]\n    if not evidence:continue\n    seen_docs.add(href)\n    out.append({'Kategorie':category,'Priorität':'Anwendungsfall prüfen','Titel':title or href.rsplit('/',1)[-1],'Treffer %':85 if len(evidence)>1 else 70,'URL':href,'Quellseite':current,'Relevant':False,'Resolver':'PDF-Kandidat mit Modellbezug – manuell prüfen','Downloadbar':True,'Nachweis URL':''})\n   elif depth<1 and len(queue)<15 and category!='Sonstiges' and any(x in (blob+' '+context) for x in ('download','datenblatt','montage','anleitung','dokument')):\n    if href not in seen_pages and href!=current and not href.lower().endswith('.pdf'):\n     try:\n      sub=get_page(href)\n      queue.append((sub.url,sub.text,depth+1))\n     except (requests.RequestException,ValueError):pass\n   if len(out)>=40:break\n  if len(out)>=40:break\n return first.url,out\n\n"+s[end:]
-          anchor="    _hits=st.session_state.get(f'universal-hits-{cid}',[])\n"
-          assert s.count(anchor)==1
-          s=s.replace(anchor,anchor+"    if not _hits and st.session_state.get(f'universal-source-{cid}'):\n     st.info('Keine eindeutig produktbezogenen PDF-Kandidaten gefunden. Allgemeine Downloadbereiche und Handbücher werden nicht mehr als Produktdokumente bewertet.')\n",1)
-          s=s.replace("st.caption('Trefferqualität ist eine Suchheuristik, keine bestätigte Produktzugehörigkeit. Diese Pilot-Suche speichert keine Kandidaten in die freigegebene Dokumentenmappe.')","st.caption('Nur direkte PDF-Links mit Modellbezug. Die Prozentzahl ist eine Suchheuristik, keine fachliche Freigabe.')")
+          fn=r'''def universal_docs_from_official_page(manufacturer,product,model,page_url):
+           """Product page scoped discovery; PDFs remain candidates, not approved."""
+           from urllib.parse import urlparse,urljoin
+           from bs4 import BeautifulSoup
+           import requests,re,ipaddress,socket
+           def safe_url(url,root=None):
+            u=urlparse(url)
+            if u.scheme!='https' or not u.hostname or u.username or u.password:raise ValueError('Nur gültige HTTPS-Herstellerseiten zulässig.')
+            host=u.hostname.lower().rstrip('.')
+            if root and not (host==root or host.endswith('.'+root)):raise ValueError('Domain außerhalb der Herstellerseite.')
+            if host=='localhost' or host.endswith(('.local','.internal','.localhost')):raise ValueError('Lokale Adressen nicht zulässig.')
+            try:
+             for item in socket.getaddrinfo(host,443,type=socket.SOCK_STREAM):
+              if not ipaddress.ip_address(item[4][0]).is_global:raise ValueError('Nichtöffentliche Adresse.')
+            except socket.gaierror:raise ValueError('Herstellerdomain nicht erreichbar.')
+            return host
+           url=clean(page_url);root=safe_url(url)
+           session=requests.Session();session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/1.7.2)'})
+           def fetch(url):
+            safe_url(url,root)
+            for _ in range(5):
+             response=session.get(url,timeout=18,allow_redirects=False)
+             if response.status_code not in (301,302,303,307,308):break
+             url=urljoin(response.url,response.headers.get('Location',''))
+             safe_url(url,root)
+            response.raise_for_status();safe_url(response.url,root)
+            if 'text/html' not in response.headers.get('content-type','text/html').lower():raise ValueError('Keine HTML-Produktseite.')
+            return response
+           first=fetch(url)
+           soup=BeautifulSoup(first.text,'html.parser')
+           model_keys=[x for x in re.split(r'[^a-z0-9]+',clean(model).lower()) if len(x)>=3]
+           product_keys=[x for x in re.split(r'[^a-z0-9]+',clean(product).lower()) if len(x)>=3 and x not in ('produkt','geraet','gerät','ventilator','helios')]
+           keys=list(dict.fromkeys(model_keys+product_keys))
+           # The page must clearly identify the requested product; otherwise no inherited trust.
+           heading=' '.join(x.get_text(' ',strip=True) for x in soup.select('h1,h2,title'))[:2500].lower()
+           page_text=soup.get_text(' ',strip=True).lower()[:16000]
+           model_code=' '.join(model_keys)
+           product_verified=bool(model_code and (model_code in re.sub(r'[^a-z0-9]+',' ',heading) or model_code in re.sub(r'[^a-z0-9]+',' ',page_text)))
+           if not product_verified:raise ValueError('Die eingegebene Seite bestätigt die Modellbezeichnung nicht eindeutig. Bitte konkrete Produktseite statt Startseite verwenden.')
+           # Model-specific manufacturer article number can be present in page title or text.
+           article_ids=set(re.findall(r'(?<!\d)0\d{4}(?!\d)',heading[:2500]))
+           if not article_ids:
+            article_ids=set(re.findall(r'(?:artikelnummer|art.-nr.|bestellnummer)\s*[:#]?\s*(0\d{4})',page_text[:6000]))
+           queue=[(first.url,first.text,0)];visited=set();seen=set();out=[]
+           while queue and len(visited)<8:
+            current,html,depth=queue.pop(0)
+            if current in visited:continue
+            visited.add(current)
+            page=BeautifulSoup(html,'html.parser')
+            for link in page.find_all('a',href=True):
+             href=urljoin(current,link['href'])
+             try:safe_url(href,root)
+             except ValueError:continue
+             title=clean(link.get_text(' ',strip=True))
+             blob=(title+' '+href).lower()
+             cat=classify(title,href,'generic')
+             is_pdf=urlparse(href).path.lower().endswith('.pdf')
+             if is_pdf and cat!='Sonstiges' and href not in seen:
+              # A document on the verified product page is a candidate even if the filename lacks model code.
+              # A linked overview page requires a model or article reference in the document link.
+              matched=any(k in blob for k in keys) or any(a in blob for a in article_ids)
+              if depth==0 or matched:
+               seen.add(href)
+               out.append({'Kategorie':cat,'Priorität':'Anwendungsfall prüfen','Titel':title or href.rsplit('/',1)[-1],'Treffer %':80 if matched else 55,'URL':href,'Quellseite':current,'Relevant':False,'Resolver':'Produktseite bestätigt – PDF manuell prüfen','Downloadbar':True,'Nachweis URL':''})
+             elif depth<1 and len(queue)<12 and not is_pdf and any(t in blob for t in ('download','dokument','datenblatt','anleitung','montage','technical','unterlagen')):
+              try:
+               sub=fetch(href)
+               if sub.url not in visited:queue.append((sub.url,sub.text,depth+1))
+              except (requests.RequestException,ValueError):pass
+             if len(out)>=50:break
+            if len(out)>=50:break
+           return first.url,out
+          
+          '''
+          s=s[:start]+fn+s[end:]
+          s=s.replace("st.caption('Nur direkte PDF-Links mit Modellbezug. Die Prozentzahl ist eine Suchheuristik, keine fachliche Freigabe.')","st.caption('PDF-Kandidaten von einer modellbestätigten Produktseite. Keine fachliche Freigabe; Treffer manuell prüfen.')")
+          s=s.replace("st.info('Keine eindeutig produktbezogenen PDF-Kandidaten gefunden. Allgemeine Downloadbereiche und Handbücher werden nicht mehr als Produktdokumente bewertet.')","st.info('Keine geeigneten direkten PDF-Links gefunden. Der Hersteller kann Downloads über Skripte oder externe Dokumentenportale bereitstellen.')")
+          assert s.count('Produktseite bestätigt – PDF manuell prüfen')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga171/version.json').write_text(json.dumps({'version':'1.7.1'})+'\n',encoding='utf-8')
-          print('PASS: only model-linked PDFs, directory pages excluded, no auto approval')
+          Path('/tmp/tga172/version.json').write_text(json.dumps({'version':'1.7.2'})+'\n',encoding='utf-8')
+          print('PASS syntax; model-verified page permits PDF candidates without model in filename')
           PY
-          (cd /tmp/tga171 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.7.1.zip
+          (cd /tmp/tga172 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.7.2.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.7.1.zip
-          git commit -m 'Build v1.7.1 precise document candidates'
+          git add TGA_Product_Finder_Update_v1.7.2.zip
+          git commit -m 'Build v1.7.2 product-page document context'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.7.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.1.zip','sha256':sha}
+          data={'version':'1.7.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.2.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.7.1 manifest'
+          git commit -m 'Publish v1.7.2 manifest'
           git push
