@@ -14,16 +14,16 @@ jobs:
           set -e
           python3 - <<'PY'
           import zipfile
-          z=zipfile.ZipFile('TGA_Product_Finder_Update_v2.1.8.zip')
+          z=zipfile.ZipFile('TGA_Product_Finder_Update_v2.2.1.zip')
           s=z.read('app.py').decode('utf-8').splitlines()
-          terms=['CREATE TABLE IF NOT EXISTS components','INSERT INTO components','SELECT id,manufacturer,product','rows=con.execute','def import','article_no','def init_db']
+          terms=['def read_excel','def classify_component_identifier','def score(','def db():','INSERT INTO components','model_type','Dokumentationsübersicht','def search_product_for_component']
           hits=[]
           for i,line in enumerate(s):
               if any(t in line for t in terms):
                   a=max(0,i-24);b=min(len(s),i+36)
                   hits.append((i+1,'\n'.join(f'{j+1}: {s[j]}' for j in range(a,b))))
-          report='\n\n'.join('MATCH LINE '+str(i)+'\n'+block for i,block in hits[:36])
-          open('component_source_audit.txt','w',encoding='utf-8').write(report[:240000])
+          report='\n\n'.join('MATCH LINE '+str(i)+'\n'+block for i,block in hits[:24])
+          open('identifier_source_audit.txt','w',encoding='utf-8').write(report[:240000])
           print('Matches',len(hits))
           PY
           git config user.name 'TGA Update Bot'
