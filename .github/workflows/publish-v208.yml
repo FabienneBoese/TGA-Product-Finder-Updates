@@ -314,6 +314,9 @@ jobs:
           # Vorhandene Daten ohne Loeschung und ohne Neuimport migrieren.
           schema_lines=[line for line in s.splitlines() if line.strip().startswith("if 'model_type' not in ccols:")]
           assert schema_lines, 'model_type schema missing'
+          # Vorhandene doppelte Migrationszeile aus alten Releases bereinigen.
+          for redundant in schema_lines[1:]:
+              s=s.replace(redundant+"\n","",1)
           schema_line=schema_lines[0]
           pad=schema_line[:len(schema_line)-len(schema_line.lstrip())]
           migration=pad+"for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():\n"+pad+" _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)\n"+pad+" if _kind=='type' and not str(_model or '').strip():\n"+pad+"  c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))"
