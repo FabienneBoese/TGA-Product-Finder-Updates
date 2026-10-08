@@ -63,7 +63,7 @@ jobs:
           s=s.replace('key="persistent_update_install_v150"','key="persistent_update_install_v151"',1)
           anchor=" c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')"
           if s.count(anchor)!=1:raise RuntimeError('Schema-Anker fehlt')
-          s=s.replace(anchor,anchor+'\\n try:\\n  c.execute("ALTER TABLE components ADD COLUMN gewerk TEXT DEFAULT \\\'\\\'")\\n except Exception as _migration_error:\\n  if "duplicate column name" not in str(_migration_error).lower(): raise',1)
+          s=s.replace(anchor,anchor+"\n try:\n  c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')\n except Exception as exc:\n  if 'duplicate column name' not in str(exc).lower(): raise",1)
           old="INSERT INTO components(project,manufacturer,product,article_no,confidence,status,docs_searched) VALUES(?,?,?,?,?,?,0)"
           new_sql="INSERT INTO components(project,manufacturer,product,article_no,confidence,status,docs_searched,gewerk) VALUES(?,?,?,?,?,?,0,?)"
           if s.count(old)!=1:raise RuntimeError('INSERT-Anker fehlt')
