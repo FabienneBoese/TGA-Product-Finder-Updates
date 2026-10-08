@@ -24,18 +24,8 @@ jobs:
           s=s.replace('APP_VERSION = "2.0.12"','APP_VERSION = "2.0.13"',1)
           marker="st.info('Für KERMI Basic-E die offizielle Herstellerseite https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/ prüfen. Für PDF-Kandidaten die universelle Suche verwenden.'); # "
           assert s.count(marker)==1
-          replacement="""if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():
-    if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):
-     try:
-      _khits=kermi_basic_official_documents()
-      st.session_state[f'universal-hits-{cid}']=_khits
-      st.session_state[f'universal-source-{cid}']='KERMI Basic Herstellerseite'
-      if _khits:st.success(str(len(_khits))+' verifizierte KERMI-PDF-Kandidaten gefunden. Fachliche Freigabe offen.')
-      else:st.warning('Keine verifizierten PDF-Dateien auf der offiziellen KERMI-Familienseite gefunden.')
-     except Exception as exc:
-      st.warning('KERMI-Suche derzeit nicht erfolgreich: '+str(exc)[:160])
-    st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')
-   # """
+          replacement="if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():\n    if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):\n     try:\n      _khits=kermi_basic_official_documents()\n      st.session_state[f'universal-hits-{cid}']=_khits\n      st.session_state[f'universal-source-{cid}']='KERMI Basic Herstellerseite'\n      if _khits:st.success(str(len(_khits))+' verifizierte KERMI-PDF-Kandidaten gefunden. Fachliche Freigabe offen.')\n      else:st.warning('Keine verifizierten PDF-Dateien auf der offiziellen KERMI-Familienseite gefunden.')\n     except Exception as exc:\n      st.warning('KERMI-Suche derzeit nicht erfolgreich: '+str(exc)[:160])\n    st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')\n   # "
+
           s=s.replace(marker,replacement,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
