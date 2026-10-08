@@ -12,6 +12,7 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
+          python3 -m pip install -q pandas openpyxl
           python3 - <<'PY'
           import zipfile,ast,sqlite3,tempfile,os,traceback,io
           from pathlib import Path
