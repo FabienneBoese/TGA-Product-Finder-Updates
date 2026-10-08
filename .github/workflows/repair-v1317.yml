@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v1.5.4 sidebar navigation
+name: Publish TGA Product Finder v1.5.5 FKRS-EU
 on:
   push:
     paths:
@@ -10,58 +10,50 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and verify navigation
+      - name: Build and validate FKRS-EU
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga154
-          unzip -q TGA_Product_Finder_Update_v1.5.3.zip -d /tmp/tga154
+          mkdir -p /tmp/tga155
+          unzip -q TGA_Product_Finder_Update_v1.5.4.zip -d /tmp/tga155
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga154/app.py')
+          p=Path('/tmp/tga155/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.5.3"')==1
-          s=s.replace('APP_VERSION = "1.5.3"','APP_VERSION = "1.5.4"',1)
-          s=s.replace('persistent_update_install_v153','persistent_update_install_v154',1)
-          # In v1.5.3 the component expanders were accidentally nested inside
-          # the "offline PDFs exist" branch. Move them out of that branch.
-          marker="st.divider(); st.subheader('Komponenten & Dokumentenmappen')"
-          assert s.count(marker)==1, 'Komponentenbereich nicht eindeutig'
-          pos=s.index(marker)
-          line_start=s.rfind('\n',0,pos)+1
-          prefix=s[line_start:pos]
-          assert prefix.isspace() and len(prefix)>=2, repr(prefix)
-          before=s[:line_start]
-          tail=s[line_start:]
-          tail=''.join(line[1:] if line.startswith(' ') else line for line in tail.splitlines(keepends=True))
-          s=before+tail
-          assert "st.expander(f'{m} · {p}'" in s
-          # All components are now displayed for the selected project regardless
-          # of whether any PDFs have already been downloaded.
-          assert s.count("st.sidebar.radio('Bereich öffnen'")==1
-          assert s.count("if _tga_page=='📊 Dokumentenübersicht':")==1
-          assert s.count('persistent_update_install_v154')==1
+          assert s.count('APP_VERSION = "1.5.4"')==1
+          s=s.replace('APP_VERSION = "1.5.4"','APP_VERSION = "1.5.5"',1)
+          s=s.replace('persistent_update_install_v154','persistent_update_install_v155',1)
+          anchor=" ('trox','FK2-EU'):["
+          assert s.count(anchor)==1
+          s=s.replace(anchor," ('trox','FKRS-EU'):[\n  'https://www.trox.de/brandschutzklappen/fkrs-eu-065efc2b4efeb254',\n ],\n"+anchor,1)
+          # TROX FKRS-EU has its own official source and must never inherit FK2-EU documents.
+          marker="def resolve_product_page(manufacturer, product):"
+          assert s.count(marker)==1
+          # Exact model match in product key; do not alias FKRS to FK2.
+          assert "def product_key(m,p):" in s
+          assert "('trox','FKRS-EU')" in s
+          assert "https://www.trox.de/brandschutzklappen/fkrs-eu-065efc2b4efeb254" in s
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga154/version.json').write_text(json.dumps({'version':'1.5.4'},indent=2)+'\n',encoding='utf-8')
-          print('PASS: Python syntax, sidebar navigation, two page routes, update button retained')
+          Path('/tmp/tga155/version.json').write_text(json.dumps({'version':'1.5.5'},indent=2)+'\n',encoding='utf-8')
+          print('PASS: FKRS-EU manufacturer source enabled, FK2-EU source separate, syntax valid')
           PY
-          (cd /tmp/tga154 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.4.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.5.4.zip
+          (cd /tmp/tga155 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.5.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.5.5.zip
           git config user.name "TGA Update Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add TGA_Product_Finder_Update_v1.5.4.zip
-          git commit -m "Build v1.5.4 sidebar navigation"
+          git add TGA_Product_Finder_Update_v1.5.5.zip
+          git commit -m "Build v1.5.5 TROX FKRS-EU source"
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.4.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.5.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.5.4','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.4.zip','sha256':sha}
+          data={'version':'1.5.5','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.5.zip','sha256':sha}
           open('update_manifest.json','w',encoding='utf-8').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m "Publish immutable v1.5.4 manifest"
+          git commit -m "Publish immutable v1.5.5 manifest"
           git push
