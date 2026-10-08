@@ -1,4 +1,4 @@
-name: Publish v1.7.3 Helios document host fix
+name: Publish v1.7.4 offline PDF pilot
 on:
   push:
     paths:
@@ -13,46 +13,41 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga173
-          unzip -q TGA_Product_Finder_Update_v1.7.2.zip -d /tmp/tga173
+          mkdir -p /tmp/tga174
+          unzip -q TGA_Product_Finder_Update_v1.7.3.zip -d /tmp/tga174
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga173/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.7.2"')==1
-          s=s.replace('APP_VERSION = "1.7.2"','APP_VERSION = "1.7.3"',1).replace('persistent_update_install_v172','persistent_update_install_v173',1)
-          start=s.index('def universal_docs_from_official_page(')
-          end=s.index('def find_docs(manufacturer,product):',start)
-          fn=s[start:end]
-          assert "root=safe_url(url)" in fn
-          fn=fn.replace("root=safe_url(url)","root=safe_url(url)\n if root.endswith('.heliosventilatoren.de') or root=='heliosventilatoren.de':root='heliosventilatoren.de'")
-          assert "if is_pdf and cat!='Sonstiges' and href not in seen:" in fn
-          fn=fn.replace("if is_pdf and cat!='Sonstiges' and href not in seen:","if is_pdf and href not in seen:\n    if cat=='Sonstiges' and any(t in title.lower() for t in ('schaltplan','wiring diagram')):cat='Schaltplan'\n    if cat=='Sonstiges' and any(t in title.lower() for t in ('maßzeichnung','masszeichnung','dimension')):cat='Maßzeichnung'\n    if cat=='Sonstiges' and 'katalog' in title.lower():cat='Katalogseite'\n    if cat=='Sonstiges':continue")
-          # Keep confidence below approval threshold, all candidates require review.
-          s=s[:start]+fn+s[end:]
-          assert s.count("root='heliosventilatoren.de'")==1
-          assert s.count("cat='Schaltplan'")==1
+          p=Path('/tmp/tga174/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.7.3"')==1
+          s=s.replace('APP_VERSION = "1.7.3"','APP_VERSION = "1.7.4"',1).replace('persistent_update_install_v173','persistent_update_install_v174',1)
+          assert s.count('def universal_docs_from_official_page(')==1
+          s=s.replace('def universal_docs_from_official_page(',"def save_universal_pdf_candidate(con,component_id,project,manufacturer,product,doc):\n \"\"\"Offline-save a reviewed candidate without technical approval.\"\"\"\n from urllib.parse import urlparse\n import requests,os,hashlib\n url=doc['URL']\n u=urlparse(url)\n if u.scheme!='https' or not u.hostname or not (u.hostname.lower()=='heliosventilatoren.de' or u.hostname.lower().endswith('.heliosventilatoren.de')):\n  raise ValueError('Für diesen Pilottest sind nur offizielle Helios-PDF-Links freigegeben.')\n response=requests.get(url,timeout=45,allow_redirects=True,headers={'User-Agent':'Mozilla/5.0'},stream=True)\n response.raise_for_status()\n final=urlparse(response.url)\n if final.scheme!='https' or not final.hostname or not (final.hostname.lower()=='heliosventilatoren.de' or final.hostname.lower().endswith('.heliosventilatoren.de')):\n  response.close();raise ValueError('PDF-Weiterleitung außerhalb der Herstellerdomain.')\n limit=25*1024*1024\n data=bytearray()\n try:\n  for chunk in response.iter_content(chunk_size=65536):\n   if chunk:\n    data.extend(chunk)\n    if len(data)>limit:raise ValueError('PDF größer als 25 MB.')\n finally:response.close()\n if not bytes(data[:5])==b'%PDF-':raise ValueError('Der Link liefert keine echte PDF-Datei.')\n folder=os.path.join(DOWNLOAD_ROOT,safe(project),safe(manufacturer),safe(product))\n os.makedirs(folder,exist_ok=True)\n basename=safe(os.path.basename(final.path).removesuffix('.pdf')) or 'Dokument'\n filename=basename+'_'+hashlib.sha256(url.encode()).hexdigest()[:10]+'.pdf'\n path=os.path.join(folder,filename)\n with open(path,'wb') as stream:stream.write(data)\n existing=con.execute('SELECT id FROM documents WHERE component_id=? AND source_url=?',(component_id,url)).fetchone()\n if existing:\n  con.execute(\"UPDATE documents SET doc_type=?,title=?,verified=1,confidence=?,source_page=?,local_path=?,download_status=?,priority=?,project_confirmed=0,project_decision='' WHERE id=?\",(doc['Kategorie'],doc['Titel'],doc['Treffer %'],doc['Quellseite'],path,'Offline · PDF geprüft','Anwendungsfall prüfen',existing[0]))\n else:\n  con.execute(\"INSERT INTO documents(component_id,doc_type,title,source_url,verified,confidence,source_page,local_path,download_status,priority,project_confirmed,project_decision,project_decision_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)\",(component_id,doc['Kategorie'],doc['Titel'],url,1,doc['Treffer %'],doc['Quellseite'],path,'Offline · PDF geprüft','Anwendungsfall prüfen',0,'',''))\n con.commit()\n return path,len(data)\n\n"+'def universal_docs_from_official_page(',1)
+          anchor="     st.dataframe(pd.DataFrame(_hits)[['Kategorie','Titel','Treffer %','URL']],hide_index=True,width='stretch')\n"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+"     st.caption('PDF-Kandidaten sind nicht fachlich freigegeben. Bitte Dokument und Ausführung vor dem Speichern kontrollieren.')\n     _selected=st.multiselect('PDF-Kandidaten für Offline-Speicherung auswählen',options=list(range(len(_hits))),format_func=lambda i: _hits[i]['Kategorie']+' · '+_hits[i]['Titel'],key=f'universal-select-{cid}')\n     if st.button('Ausgewählte echte PDFs offline speichern',key=f'universal-download-{cid}',disabled=not _selected):\n      _success=[];_failed=[]\n      for _i in _selected:\n       try:\n        _path,_size=save_universal_pdf_candidate(con,cid,project,m,p,_hits[_i])\n        _success.append(_hits[_i]['Titel'])\n       except Exception as _exc:_failed.append(_hits[_i]['Titel']+': '+str(_exc))\n      if _success:st.success(str(len(_success))+' echte PDF-Datei(en) offline gespeichert. Fachliche Freigabe weiterhin offen.')\n      for _error in _failed:st.error(_error)\n",1)
+          assert s.count('save_universal_pdf_candidate(con,cid,project,m,p,_hits[_i])')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga173/version.json').write_text(json.dumps({'version':'1.7.3'})+'\n',encoding='utf-8')
-          print('PASS syntax, sibling Helios subdomains, model-verified page, PDF document types')
+          Path('/tmp/tga174/version.json').write_text(json.dumps({'version':'1.7.4'})+'\n',encoding='utf-8')
+          print('PASS syntax: verified PDF magic, capped 25MB, official Helios host, SQLite offline record, no technical approval')
           PY
-          (cd /tmp/tga173 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.3.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.7.3.zip
+          (cd /tmp/tga174 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.4.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.7.4.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.7.3.zip
-          git commit -m 'Build v1.7.3 Helios subdomain fix'
+          git add TGA_Product_Finder_Update_v1.7.4.zip
+          git commit -m 'Build v1.7.4 offline PDF pilot'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.3.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.4.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.7.3','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.3.zip','sha256':sha}
+          data={'version':'1.7.4','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.4.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.7.3 manifest'
+          git commit -m 'Publish v1.7.4 manifest'
           git pull --rebase origin main
           git push
