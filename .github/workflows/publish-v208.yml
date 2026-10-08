@@ -312,7 +312,7 @@ jobs:
           """
           s=s.replace(marker,helper+marker,1)
           # Vorhandene Daten ohne Loeschung und ohne Neuimport migrieren.
-          schema_lines=[line for line in s.splitlines() if "if 'model_type' not in ccols:" in line]
+          schema_lines=[line for line in s.splitlines() if line.strip().startswith("if 'model_type' not in ccols:")]
           assert len(schema_lines)==1,('model_type schema',len(schema_lines))
           schema_line=schema_lines[0]
           pad=schema_line[:len(schema_line)-len(schema_line.lstrip())]
