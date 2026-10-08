@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.20 Offline Save
+name: Publish TGA Product Finder v2.0.21 Offline Save
 on:
   push:
     paths:
@@ -13,25 +13,39 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga220
-          unzip -q TGA_Product_Finder_Update_v2.0.19.zip -d /tmp/tga220
+          mkdir -p /tmp/tga221
+          unzip -q TGA_Product_Finder_Update_v2.0.20.zip -d /tmp/tga221
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga220/app.py')
+          p=Path('/tmp/tga221/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.19"')==1
-          s=s.replace('APP_VERSION = "2.0.19"','APP_VERSION = "2.0.20"',1)
-          assert 'def document_source_policy(' in s
-          marker='def document_source_policy('
-          assert s.count(marker)==1
-          strategy=[
+          assert s.count('APP_VERSION = "2.0.20"')==1
+          s=s.replace('APP_VERSION = "2.0.20"','APP_VERSION = "2.0.21"',1)
+          import ast
+          start=s.index('def universal_product_search_patterns(')
+          end=s.index('def document_source_policy(',start)
+          new_function=[
            'def universal_product_search_patterns(manufacturer,product,article=""):',
-           ' """Generate reusable search terms for every product."""',
+           ' """Create type-aware queries; do not mistake a model name for an article number."""',
+           ' import re',
            ' m=str(manufacturer or "").strip(); p=str(product or "").strip(); a=str(article or "").strip()',
-           ' raw=[("Hersteller + Produkt + Artikelnummer"," ".join(x for x in (m,p,a) if x)),("Hersteller + Artikelnummer"," ".join(x for x in (m,a) if x)),("Hersteller + Typ"," ".join(x for x in (m,p) if x))]',
+           ' def article_number(value):',
+           '  v=value.strip()',
+           '  return bool(v and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{3,}",v) and any(c.isdigit() for c in v))',
+           ' # The import field named article can actually contain a model designation.',
+           ' number=a if article_number(a) else ""',
+           ' model="" if number else a',
+           ' if not model and p: model=p',
+           ' identity=" ".join(x for x in (m,p,model if model.casefold()!=p.casefold() else "",number) if x)',
+           ' raw=[]',
+           ' if number: raw.append(("Hersteller + Produkt + Artikelnummer",identity))',
+           ' if number: raw.append(("Hersteller + Artikelnummer"," ".join(x for x in (m,number) if x)))',
+           ' if model: raw.append(("Hersteller + Modell"," ".join(x for x in (m,model) if x)))',
+           ' if p and model and p.casefold()!=model.casefold(): raw.append(("Hersteller + Produkt + Modell"," ".join((m,p,model))))',
+           ' if p: raw.append(("Hersteller + Produkt"," ".join(x for x in (m,p) if x)))',
            ' for kind,term in (("Datenblatt","Datenblatt PDF"),("Montageanleitung","Montageanleitung PDF"),("Leistungserklärung","DoP PDF"),("Zulassung","Zulassung PDF"),("EPD","EPD PDF")):',
-           '  raw.append((kind," ".join(x for x in (m,p,a,term) if x)))',
+           '  raw.append((kind," ".join(x for x in (identity,term) if x)))',
            ' seen=set(); result=[]',
            ' for label,query in raw:',
            '  key=query.casefold()',
@@ -40,46 +54,41 @@ jobs:
            ' return result',
            '',
           ]
-          s=s.replace(marker,'\n'.join(strategy)+'\n'+marker,1)
-          needle="if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):"
-          lines=s.splitlines()
-          matches=[i for i,line in enumerate(lines) if needle in line]
-          assert len(matches)==1
-          idx=matches[0]
-          indent=lines[idx][:len(lines[idx])-len(lines[idx].lstrip())]
-          addition=[
-           indent+'with st.expander("Herstellerübergreifende Suchmuster für dieses Produkt",expanded=False):',
-           indent+' st.caption("Suchbegriffe für Typ, Artikelnummer und Dokumentarten. Treffer sind nicht automatisch freigegeben.")',
-           indent+' st.dataframe(pd.DataFrame(universal_product_search_patterns(m,p,a)),hide_index=True,width="stretch")',
-          ]
-          lines[idx:idx]=addition
-          s='\n'.join(lines)+'\n'
-          assert 'universal_product_search_patterns(m,p,a)' in s
-          print('PASS: reusable universal search patterns visible in generic product search')
+          s=s[:start]+'\\n'.join(new_function)+'\\n'+s[end:]
+          ast.parse(s)
+          namespace={}
+          exec('\\n'.join(new_function),namespace)
+          test=namespace['universal_product_search_patterns']('Kermi','Badheizkörper','Basic-E')
+          assert not any('Artikelnummer' in item['Suchmuster'] for item in test),test
+          assert any(item['Suchbegriff']=='Kermi Badheizkörper Basic-E Datenblatt PDF' for item in test),test
+          test2=namespace['universal_product_search_patterns']('Geberit','Renova Plan','501.632.00.1')
+          assert any('Artikelnummer' in item['Suchmuster'] for item in test2),test2
+          assert not any(item['Suchbegriff']=='Geberit 501.632.00.1' and 'Modell' in item['Suchmuster'] for item in test2)
+          print('PASS: KERMI model not mislabelled as article number; Geberit article number recognized')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga220/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga221/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga220 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.20.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.20.zip
+          (cd /tmp/tga221 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.21.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.21.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.20.zip
-          git commit -m 'Build TGA Product Finder v2.0.20'
+          git add TGA_Product_Finder_Update_v2.0.21.zip
+          git commit -m 'Build TGA Product Finder v2.0.21'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.20.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.21.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.20','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.20.zip','sha256':sha}
+          data={'version':'2.0.21','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.21.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.20 update manifest'
+          git commit -m 'Publish v2.0.21 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
