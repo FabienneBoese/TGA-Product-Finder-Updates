@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.15 KERMI
+name: Publish TGA Product Finder v2.0.16 KERMI
 on:
   push:
     paths:
@@ -13,50 +13,64 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga215
-          unzip -q TGA_Product_Finder_Update_v2.0.14.zip -d /tmp/tga215
+          mkdir -p /tmp/tga216
+          unzip -q TGA_Product_Finder_Update_v2.0.15.zip -d /tmp/tga216
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga215/app.py')
+          p=Path('/tmp/tga216/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.14"')==1
-          s=s.replace('APP_VERSION = "2.0.14"','APP_VERSION = "2.0.15"',1)
-          oldurl="https://www.duschmeister.de/images/products_upload/Montageanleitung_12334-2_doc1.pdf"
-          newurl="https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf"
-          assert s.count(oldurl)==1
-          s=s.replace(oldurl,newurl,1)
-          s=s.replace("https://www.duschmeister.de/Kermi-Badheizkoerper-Basic-E.html","https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf",1)
-          s=s.replace("KERMI Basic-E – Montageanleitung (Händlerquelle, Ausführung prüfen)","KERMI Basic-E – Montageanleitung AK3 (verifizierte PDF; Ausführung prüfen)",1)
-          s=s.replace("Weder auf der KERMI-Seite noch über die geprüfte produktspezifische Sekundärquelle eine echte PDF gefunden.","Keine PDF verfügbar: KERMI-Downloadcenter und Sekundärquelle aktuell nicht abrufbar.",1)
-          import requests
-          _check=requests.get(newurl,timeout=25,headers={'User-Agent':'Mozilla/5.0'})
-          assert _check.status_code==200 and _check.content.startswith(b'%PDF-'),"KERMI source is not a valid PDF"
-          print("KERMI PDF LIVE VERIFIED:",len(_check.content),"bytes")
+          assert s.count('APP_VERSION = "2.0.15"')==1
+          s=s.replace('APP_VERSION = "2.0.15"','APP_VERSION = "2.0.16"',1)
+          import re
+          target="st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')"
+          assert s.count(target)==1
+          match=re.search(r'(?m)^( +)'+re.escape(target),s)
+          assert match
+          indent=match.group(1)
+          lines=[
+           "_kermi_hits=st.session_state.get(f'universal-hits-{cid}',[])",
+           "if _kermi_hits:",
+           " st.markdown('**Gefundene KERMI-Unterlagen – Offline-Speicherung**')",
+           " for _k in _kermi_hits: st.write('PDF-Kandidat: '+str(_k.get('Titel','Unbenannt')))",
+           " if st.button('KERMI-PDF jetzt offline speichern',key=f'kermi_save_{cid}',type='primary'):",
+           "  try:",
+           "   _saved=[]",
+           "   for _k in _kermi_hits:",
+           "    _path,_size=save_universal_pdf_candidate(con,cid,project,m,p,_k)",
+           "    _saved.append(_k.get('Titel','PDF'))",
+           "   con.commit()",
+           "   st.success(str(len(_saved))+' KERMI-PDF(s) offline gespeichert. Fachliche Freigabe offen.')",
+           "  except Exception as _exc: st.error('Offline-Speicherung fehlgeschlagen: '+str(_exc))",
+           "st.caption('Die genaue Basic-E-Ausführung vor fachlicher Freigabe prüfen.')"
+          ]
+          replacement='\n'.join(indent+line for line in lines)
+          s=s[:match.start()]+replacement+s[match.end():]
+          assert "KERMI-PDF jetzt offline speichern" in s
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga215/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga216/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga215 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.15.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.15.zip
+          (cd /tmp/tga216 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.16.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.16.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.15.zip
-          git commit -m 'Build TGA Product Finder v2.0.15'
+          git add TGA_Product_Finder_Update_v2.0.16.zip
+          git commit -m 'Build TGA Product Finder v2.0.16'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.15.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.16.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.15','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.15.zip','sha256':sha}
+          data={'version':'2.0.16','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.16.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.15 update manifest'
+          git commit -m 'Publish v2.0.16 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
