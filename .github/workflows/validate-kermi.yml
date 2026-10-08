@@ -1,0 +1,23 @@
+name: Validate KERMI Basic-E PDF source
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-kermi.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify real PDF response
+        run: |
+          python3 - <<'PY'
+          import requests
+          url='https://www.duschmeister.de/images/products_upload/Montageanleitung_12334-2_doc1.pdf'
+          try:
+              r=requests.get(url,timeout=25,headers={'User-Agent':'Mozilla/5.0'})
+              print('HTTP',r.status_code,'bytes',len(r.content),'signature',repr(r.content[:8]))
+              assert r.status_code==200 and r.content.startswith(b'%PDF-'), 'No valid PDF'
+              print('KERMI_BASIC_E_PDF_VERIFIED')
+          except Exception as e:
+              print('KERMI_BASIC_E_PDF_UNVERIFIED',type(e).__name__,str(e))
+              raise
+          PY
