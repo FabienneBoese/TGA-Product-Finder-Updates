@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.1.0 Model Recognition
+name: Publish TGA Product Finder v2.1.1 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga210
-          unzip -q TGA_Product_Finder_Update_v2.0.38.zip -d /tmp/tga210
+          mkdir -p /tmp/tga211
+          unzip -q TGA_Product_Finder_Update_v2.1.0.zip -d /tmp/tga211
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga210/app.py')
+          p=Path('/tmp/tga211/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.38"')==1
-          s=s.replace('APP_VERSION = "2.0.38"','APP_VERSION = "2.1.0"',1)
+          assert s.count('APP_VERSION = "2.1.0"')==1
+          s=s.replace('APP_VERSION = "2.1.0"','APP_VERSION = "2.1.1"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -156,6 +156,21 @@ jobs:
            "    if conflict:notes.append(\"PDF-Konflikt: Basic 50 ohne Basic-E-Nachweis; keine Zuordnung\")",
            "    if score<60:notes.append(\"PDF-Zuordnung: ungeprüft; Produktidentität nicht ausreichend belegt\")",
            "    else:notes.append(\"PDF-Zuordnung: Kandidat zur manuellen Prüfung; keine automatische Freigabe\")",
+           "    # Extract exact technical type identifiers; do not assume a family relationship.",
+           "    type_pattern=re.compile(r\"\\b(?:[A-Z][A-Z0-9]{1,5}\\d{1,5}|E0E\\d{2,5})\\s*[-/]?\\s*AK\\s*\\d{1,3}\\b\",re.I)",
+           "    types_found={}",
+           "    for page_no,content in enumerate(page_texts,1):",
+           "     for match in type_pattern.finditer(content):",
+           "      typ=\" \".join(match.group(0).upper().split())",
+           "      if typ not in types_found:types_found[typ]=[]",
+           "      if page_no not in types_found[typ]:types_found[typ].append(page_no)",
+           "    notes.append(\"PDF-Typenextraktion: \"+str(len(types_found))+\" unterschiedliche technische Typen (ungeprüft)\")",
+           "    for typ,pages in list(types_found.items())[:12]:notes.append(\"PDF-Technischer Typ: \"+typ+\" | Seite \"+\", \".join(map(str,pages[:8])))",
+           "    model_normalized=re.sub(r\"[^A-Z0-9]\",\"\",model.upper())",
+           "    direct=[typ for typ in types_found if re.sub(r\"[^A-Z0-9]\",\"\",typ)==model_normalized]",
+           "    if direct:notes.append(\"PDF-Typenabgleich: Exakter technischer Typ stimmt überein; Hersteller und Ausführung weiter prüfen\")",
+           "    elif types_found:notes.append(\"PDF-Typenabgleich: Technische Typen gefunden, aber keine belegte Zuordnung zur Produktfamilie \"+model[:50])",
+           "    if basic_e and types_found:notes.append(\"KERMI-Prüfstatus: ERE10/E0E10 dürfen ohne offiziellen Typen-Familiennachweis nicht Basic-E zugeordnet werden\")",
            "    if matches:doc_evidence.extend(matches)",
            "    if not matches and len(pdf_text)>0:notes.append(\"PDF-Produktsuche: Text vorhanden, aber keine eindeutige Basic-E-Bezeichnung\")",
            "    if matches:",
@@ -256,31 +271,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: conservative document evidence scoring')
+          print('PASS: structured technical type extraction and unverified family separation')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga210/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga211/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga210 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.0.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.1.0.zip
+          (cd /tmp/tga211 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.1.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.1.1.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.1.0.zip
-          git commit -m 'Build TGA Product Finder v2.1.0'
+          git add TGA_Product_Finder_Update_v2.1.1.zip
+          git commit -m 'Build TGA Product Finder v2.1.1'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.0.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.1.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.1.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.0.zip','sha256':sha}
+          data={'version':'2.1.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.1.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.1.0 update manifest'
+          git commit -m 'Publish v2.1.1 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
