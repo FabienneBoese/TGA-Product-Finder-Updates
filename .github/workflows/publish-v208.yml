@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.36 Model Recognition
+name: Publish TGA Product Finder v2.0.37 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga236
-          unzip -q TGA_Product_Finder_Update_v2.0.35.zip -d /tmp/tga236
+          mkdir -p /tmp/tga237
+          unzip -q TGA_Product_Finder_Update_v2.0.36.zip -d /tmp/tga237
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga236/app.py')
+          p=Path('/tmp/tga237/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.35"')==1
-          s=s.replace('APP_VERSION = "2.0.35"','APP_VERSION = "2.0.36"',1)
+          assert s.count('APP_VERSION = "2.0.36"')==1
+          s=s.replace('APP_VERSION = "2.0.36"','APP_VERSION = "2.0.37"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -96,12 +96,20 @@ jobs:
            "     PdfReader=None",
            "   if PdfReader is not None:",
            "    try:",
-           "     pdf=PdfReader(BytesIO(buf));pdf_text=\" \".join((page.extract_text() or \"\") for page in pdf.pages[:5])",
+           "     pdf=PdfReader(BytesIO(buf));page_texts=[(page.extract_text() or \"\") for page in pdf.pages[:80]];pdf_text=\" \".join(page_texts)",
+           "     total_pages=len(pdf.pages);empty_pages=sum(not t.strip() for t in page_texts)",
+           "     notes.append(\"PDF-Textausbeute: \"+str(total_pages)+\" Seiten insgesamt, \"+str(len(page_texts))+\" analysiert, \"+str(len(pdf_text))+\" Zeichen, \"+str(empty_pages)+\" leere Textseiten\")",
+           "     if total_pages>80:notes.append(\"PDF-Analyse begrenzt: erste 80 Seiten\")",
            "     if not pdf_text.strip():doc_errors.append(\"PDF enthält keinen extrahierbaren Text (ggf. Scan)\")",
            "    except Exception as exc:doc_errors.append(\"PDF-Textfehler: \"+type(exc).__name__)",
            "   if pdf_text:",
-           "    matches=sorted(set(re.findall(r\"basic\\s*[- ]?e(?:\\s*[- ]?[a-z0-9]{1,12})?\",pdf_text,re.I)))[:8]",
+           "    matches=sorted(set(re.findall(r\"basic[\\s\\u00ad\\-\\u2010-\\u2015]*e(?![a-z0-9])(?:[\\s\\-]*[a-z0-9]{1,10})?\",pdf_text,re.I)))[:8]",
            "    if matches:doc_evidence.extend(matches)",
+           "    if not matches and len(pdf_text)>0:notes.append(\"PDF-Produktsuche: Text vorhanden, aber keine eindeutige Basic-E-Bezeichnung\")",
+           "    if matches:",
+           "     for hit in matches[:5]:",
+           "      page_numbers=[str(i+1) for i,t in enumerate(page_texts) if re.search(re.escape(hit),t,re.I)]",
+           "      if page_numbers:notes.append(\"PDF-Fundstelle: \"+hit[:45]+\" auf Seite \"+\", \".join(page_numbers[:5]))",
            "  except requests.RequestException as exc:doc_errors.append(type(exc).__name__)",
            " notes.append(\"Dokumentenanalyse: \"+str(doc_checked)+\" PDF geprüft, \"+str(len(doc_evidence))+\" Basic-E-Textmerkmale; keine automatische Variantenfreigabe\")",
            " if doc_evidence:notes.append(\"PDF-Produktmerkmale (ungeprüft): \"+\", \".join(doc_evidence))",
@@ -196,31 +204,31 @@ jobs:
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: pypdf auto-setup and bounded PDF text extraction')
+          print('PASS: PDF page counts, extraction diagnostics, flexible product name recognition')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga236/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga237/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga236 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.36.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.36.zip
+          (cd /tmp/tga237 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.37.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.37.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.36.zip
-          git commit -m 'Build TGA Product Finder v2.0.36'
+          git add TGA_Product_Finder_Update_v2.0.37.zip
+          git commit -m 'Build TGA Product Finder v2.0.37'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.36.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.37.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.36','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.36.zip','sha256':sha}
+          data={'version':'2.0.37','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.37.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.36 update manifest'
+          git commit -m 'Publish v2.0.37 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
