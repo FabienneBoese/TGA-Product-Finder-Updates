@@ -1,4 +1,4 @@
-name: Publish v1.8.1 Helios auto discovery fix
+name: Publish v1.8.2 Danfoss product family
 on:
   push:
     paths:
@@ -13,47 +13,53 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga181
-          unzip -q TGA_Product_Finder_Update_v1.8.0.zip -d /tmp/tga181
+          mkdir -p /tmp/tga182
+          unzip -q TGA_Product_Finder_Update_v1.8.1.zip -d /tmp/tga182
           python3 - <<'PY'
           from pathlib import Path
-          import json,py_compile,re
-          p=Path('/tmp/tga181/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.8.0"')==1
-          s=s.replace('APP_VERSION = "1.8.0"','APP_VERSION = "1.8.1"',1).replace('persistent_update_install_v180','persistent_update_install_v181',1)
+          import json,py_compile
+          p=Path('/tmp/tga182/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.8.1"')==1
+          s=s.replace('APP_VERSION = "1.8.1"','APP_VERSION = "1.8.2"',1).replace('persistent_update_install_v181','persistent_update_install_v182',1)
           start=s.index('def discover_official_product_docs(')
           end=s.index('def universal_docs_from_official_page(',start)
           fn=s[start:end]
-          assert "re.search(r'\\\\bsb\\\\s*125\\\\s*a\\\\b',wanted)" in fn
-          fn=fn.replace("re.search(r'\\\\bsb\\\\s*125\\\\s*a\\\\b',wanted)","re.search(r'sb[\\s_-]*125[\\s_-]*a(?![a-z0-9])',wanted)")
-          fn=fn.replace("candidates.append('https://www.heliosventilatoren.de/at/produkte-at/boxventilatoren/silentbox/sb-125-a-at-09506')","candidates.extend(['https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506','https://www.heliosventilatoren.de/at/produkte-at/boxventilatoren/silentbox/sb-125-a-at-09506'])")
-          assert "sb[\\s_-]*125" in fn
+          anchor=" candidates=[]\n"
+          assert fn.count(anchor)==1
+          addition=""" if 'danfoss' in m and 'ecl' in wanted and '310' in wanted:
+            source='https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'
+            url='https://assets.danfoss.com/documents/latest/374251/AI155886473192en-010702.pdf'
+            return source,[{'Kategorie':'Produktdatenblatt','Titel':'ECL Comfort 310 – allgemeines Herstellerdatenblatt (Ausführung prüfen)','Treffer %':55,'URL':url,'Quellseite':source,'Relevant':False,'Priorität':'Anwendungsfall prüfen'}]
+          """
+          fn=fn.replace(anchor,anchor+addition,1)
           s=s[:start]+fn+s[end:]
+          assert s.count("u.hostname.lower()=='heliosventilatoren.de'")==1
+          s=s.replace("u.hostname.lower()=='heliosventilatoren.de' or u.hostname.lower().endswith('.heliosventilatoren.de')","u.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or u.hostname.lower().endswith('.heliosventilatoren.de')",1)
+          assert s.count("final.hostname.lower()=='heliosventilatoren.de'")==1
+          s=s.replace("final.hostname.lower()=='heliosventilatoren.de' or final.hostname.lower().endswith('.heliosventilatoren.de')","final.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or final.hostname.lower().endswith('.heliosventilatoren.de')",1)
+          s=s.replace('Für diesen Pilottest sind nur offizielle Helios-PDF-Links freigegeben.','Nur freigegebene offizielle Hersteller-PDF-Hosts zulässig.')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          scope={}
-          assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','silentbox sb 125 a')
-          assert re.search(r'sb[\s_-]*125[\s_-]*a(?![a-z0-9])','sb-125-a')
-          Path('/tmp/tga181/version.json').write_text(json.dumps({'version':'1.8.1'})+'\n')
-          print('PASS: corrected regex, de+at Helios URLs, syntax')
+          Path('/tmp/tga182/version.json').write_text(json.dumps({'version':'1.8.2'})+'\n')
+          print('PASS syntax: Danfoss family datasheet candidate, Danfoss PDF host, review remains open')
           
           PY
-          (cd /tmp/tga181 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.8.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.8.1.zip
+          (cd /tmp/tga182 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.8.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.8.2.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.8.1.zip
-          git commit -m 'Build v1.8.1 Helios regex fix'
+          git add TGA_Product_Finder_Update_v1.8.2.zip
+          git commit -m 'Build v1.8.2 Danfoss family'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.8.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.8.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.8.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.8.1.zip','sha256':sha}
+          data={'version':'1.8.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.8.2.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.8.1 manifest'
+          git commit -m 'Publish v1.8.2 manifest'
           git pull --rebase origin main
           git push
