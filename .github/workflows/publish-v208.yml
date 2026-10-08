@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.12
+name: Publish TGA Product Finder v2.0.12 KERMI
 on:
   push:
     paths:
