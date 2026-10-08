@@ -338,7 +338,6 @@ jobs:
               print('PASS: PDF-Rauchtest',label)
           print('PASS: 5 PDF-Testdokumente erzeugt, extrahiert und auf technische Typen geprueft')
           PY
-          PY
           (cd /tmp/tga213 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.3.zip" app.py version.json TGA_Updater.ps1)
           unzip -t TGA_Product_Finder_Update_v2.1.3.zip
           python3 - <<'PY'
