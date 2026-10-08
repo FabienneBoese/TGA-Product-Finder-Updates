@@ -9,12 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          unzip -p TGA_Product_Finder_Update_v2.0.15.zip app.py > /tmp/tga_app.py
+          unzip -p TGA_Product_Finder_Update_v2.0.16.zip app.py > /tmp/tga_app.py
           python3 - <<'PY'
           s=open('/tmp/tga_app.py').read().splitlines()
           for i,l in enumerate(s):
-              if 1628 <= i+1 <= 1650:
+              if 'Nur freigegebene offizielle Hersteller-PDF-Hosts' in l or 'def save_universal_pdf_candidate' in l or 'def allowed_official' in l:
                   print(f'--- LINE {i+1} ---')
-                  for j in range(i,i+1):
+                  for j in range(max(0,i-5),min(len(s),i+34)) :
                       print(f'{j+1:04d} {s[j]}')
           PY
