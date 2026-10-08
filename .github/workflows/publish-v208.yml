@@ -54,7 +54,7 @@ jobs:
            ' return source,hits,stages',
            '',
           ]
-          s=s.replace(marker,'\\n'.join(helper)+'\\n'+marker,1)
+          s=s.replace(marker,'\n'.join(helper)+'\n'+marker,1)
           old="     if st.button('Produktseite und Dokumente automatisch suchen',key=f'universal-auto-{cid}'):"
           assert s.count(old)==1
           start=s.index(old)
@@ -72,7 +72,7 @@ jobs:
            "      with st.expander('Suchprotokoll',expanded=False):",
            "       for _step in st.session_state[f'universal-stages-{cid}']:st.write(_step)",
           ]
-          s=s[:start]+'\\n'.join(replacement)+'\\n'+s[end:]
+          s=s[:start]+'\n'.join(replacement)+'\n'+s[end:]
           ast.parse(s)
           assert s.count('Mehrstufige Dokumentensuche starten')==1
           assert 'merge(kermi_basic_official_documents())' in s
