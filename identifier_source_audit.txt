@@ -1,0 +1,1115 @@
+MATCH LINE 152
+128:  cfg=GEBERIT_VERIFIED_PRODUCTS.get(article)
+129:  if not cfg: raise ValueError('Diese Geberit-Artikelnummer ist in v0.6.0 noch nicht automatisch freigeschaltet.')
+130:  docs=[]
+131:  for d in cfg['docs']:
+132:   row=dict(d); row.update({'Treffer %':100,'Quellseite':cfg['page'],'Relevant':True}); row.setdefault('Nachweis URL',''); docs.append(row)
+133:  return cfg['page'],docs
+134: 
+135: GROHE_VARIANTS={
+136:  '36324001':{'name':'Eurosmart CE · Waschtisch · Niederdruck','details':'Niederdruck / offener Warmwasserbereiter · Netzbetrieb · mit Mischung'},
+137:  '36325001':{'name':'Eurosmart CE · Waschtisch · Netzbetrieb','details':'Hochdruck · Steckertrafo 100–240 V · Sensor · mit Mischung'},
+138:  '36327001':{'name':'Eurosmart CE · Waschtisch · Batteriebetrieb','details':'Hochdruck · 6-V-Batterie · Sensor · mit Mischung'},
+139:  '36331001':{'name':'Eurosmart CE · Waschtisch · Batteriebetrieb','details':'Sensor · 6-V-Batterie · Waschtisch-Ausführung'},
+140:  '36332000':{'name':'Eurosmart CE · Waschtisch-Wandarmatur','details':'Wandmontage · mit Mischeinrichtung und Thermostat · 6-V-Batterie'},
+141: }
+142: 
+143: def is_grohe_eurosmart_ce(manufacturer, product):
+144:  return 'grohe' in clean(manufacturer).lower() and 'EUROSMART CE' in clean(product).upper()
+145: 
+146: def grohe_variant_label(article):
+147:  v=GROHE_VARIANTS[article]
+148:  return f"{article} — {v['name']} — {v['details']}"
+149: 
+150: CATS=['Produktdatenblatt','Planung & Montage','Montage – Sonderanwendung','Leistungserklärung (DoP)','CE / Konformität','ATEX','Hygiene','Zulassung / Prüfzeugnis','EPD / DGNB / Umwelt','Broschüre / Planung','Sonstiges']
+151: 
+152: def classify_component_identifier(manufacturer, product, value):
+153:  import re
+154:  maker=str(manufacturer or '').strip().casefold()
+155:  name=str(product or '').strip().casefold()
+156:  raw=str(value or '').strip()
+157:  normalized=re.sub(r'\s+',' ',raw.upper())
+158:  if 'helios' in maker and re.fullmatch(r'SB\s*\d{2,4}\s*[A-Z]',normalized):
+159:   return (' '.join(re.findall(r'[A-Z]+|\d+',normalized)), '', 'type')
+160:  if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\-][A-Z0-9]+)*',normalized):
+161:   return (normalized, '', 'type')
+162:  if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\s*150\s*U|800)',normalized):
+163:   return (normalized, '', 'type')
+164:  return ('',raw,'unclassified')
+165: 
+166: def db():
+167:  c=sqlite3.connect(DB)
+168:  c.execute('CREATE TABLE IF NOT EXISTS components(id INTEGER PRIMARY KEY, project TEXT, manufacturer TEXT, product TEXT, article_no TEXT, confidence INTEGER, status TEXT, docs_searched INTEGER DEFAULT 0)')
+169:  c.execute('CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY, component_id INTEGER, doc_type TEXT, title TEXT, source_url TEXT, verified INTEGER DEFAULT 0, confidence INTEGER DEFAULT 0, source_page TEXT DEFAULT "", local_path TEXT DEFAULT "", download_status TEXT DEFAULT "", priority TEXT DEFAULT "")')
+170:  c.execute('CREATE TABLE IF NOT EXISTS component_selections(component_id INTEGER, selection TEXT, PRIMARY KEY(component_id,selection))')
+171:  c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')
+172:  try:
+173:   c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')
+174:  except Exception as exc:
+175:   if 'duplicate column name' not in str(exc).lower(): raise
+176:  c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+177:  c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != ""')
+178:  ccols={r[1] for r in c.execute('PRAGMA table_info(components)').fetchall()}
+179:  if 'docs_searched' not in ccols: c.execute('ALTER TABLE components ADD COLUMN docs_searched INTEGER DEFAULT 0')
+180:  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT ""')
+181:  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT ""')
+182:  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():
+183:   _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)
+184:   if _kind=='type' and not str(_model or '').strip():
+185:    c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))
+186:  if 'product_name_confirmed' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_name_confirmed INTEGER DEFAULT 0')
+187:  cols={r[1] for r in c.execute('PRAGMA table_info(documents)').fetchall()}
+
+MATCH LINE 166
+142: 
+143: def is_grohe_eurosmart_ce(manufacturer, product):
+144:  return 'grohe' in clean(manufacturer).lower() and 'EUROSMART CE' in clean(product).upper()
+145: 
+146: def grohe_variant_label(article):
+147:  v=GROHE_VARIANTS[article]
+148:  return f"{article} — {v['name']} — {v['details']}"
+149: 
+150: CATS=['Produktdatenblatt','Planung & Montage','Montage – Sonderanwendung','Leistungserklärung (DoP)','CE / Konformität','ATEX','Hygiene','Zulassung / Prüfzeugnis','EPD / DGNB / Umwelt','Broschüre / Planung','Sonstiges']
+151: 
+152: def classify_component_identifier(manufacturer, product, value):
+153:  import re
+154:  maker=str(manufacturer or '').strip().casefold()
+155:  name=str(product or '').strip().casefold()
+156:  raw=str(value or '').strip()
+157:  normalized=re.sub(r'\s+',' ',raw.upper())
+158:  if 'helios' in maker and re.fullmatch(r'SB\s*\d{2,4}\s*[A-Z]',normalized):
+159:   return (' '.join(re.findall(r'[A-Z]+|\d+',normalized)), '', 'type')
+160:  if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\-][A-Z0-9]+)*',normalized):
+161:   return (normalized, '', 'type')
+162:  if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\s*150\s*U|800)',normalized):
+163:   return (normalized, '', 'type')
+164:  return ('',raw,'unclassified')
+165: 
+166: def db():
+167:  c=sqlite3.connect(DB)
+168:  c.execute('CREATE TABLE IF NOT EXISTS components(id INTEGER PRIMARY KEY, project TEXT, manufacturer TEXT, product TEXT, article_no TEXT, confidence INTEGER, status TEXT, docs_searched INTEGER DEFAULT 0)')
+169:  c.execute('CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY, component_id INTEGER, doc_type TEXT, title TEXT, source_url TEXT, verified INTEGER DEFAULT 0, confidence INTEGER DEFAULT 0, source_page TEXT DEFAULT "", local_path TEXT DEFAULT "", download_status TEXT DEFAULT "", priority TEXT DEFAULT "")')
+170:  c.execute('CREATE TABLE IF NOT EXISTS component_selections(component_id INTEGER, selection TEXT, PRIMARY KEY(component_id,selection))')
+171:  c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')
+172:  try:
+173:   c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')
+174:  except Exception as exc:
+175:   if 'duplicate column name' not in str(exc).lower(): raise
+176:  c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+177:  c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != ""')
+178:  ccols={r[1] for r in c.execute('PRAGMA table_info(components)').fetchall()}
+179:  if 'docs_searched' not in ccols: c.execute('ALTER TABLE components ADD COLUMN docs_searched INTEGER DEFAULT 0')
+180:  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT ""')
+181:  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT ""')
+182:  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():
+183:   _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)
+184:   if _kind=='type' and not str(_model or '').strip():
+185:    c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))
+186:  if 'product_name_confirmed' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_name_confirmed INTEGER DEFAULT 0')
+187:  cols={r[1] for r in c.execute('PRAGMA table_info(documents)').fetchall()}
+188:  for name,sql in [('confidence','INTEGER DEFAULT 0'),('source_page','TEXT DEFAULT ""'),('local_path','TEXT DEFAULT ""'),('download_status','TEXT DEFAULT ""'),('priority','TEXT DEFAULT ""'),('project_confirmed','INTEGER DEFAULT 0'),('project_decision','TEXT DEFAULT ""'),('project_decision_note','TEXT DEFAULT ""')]:
+189:   if name not in cols: c.execute(f'ALTER TABLE documents ADD COLUMN {name} {sql}')
+190:  c.execute("UPDATE documents SET project_confirmed=0 WHERE title LIKE '%Mapress Therm%Installation / Verarbeitung%' AND project_confirmed=1 AND (project_decision IS NULL OR project_decision='')")
+191:  c.execute("UPDATE documents SET project_confirmed=0,project_decision='',project_decision_note='' WHERE title='Anwendbarkeitsnachweise' AND project_decision='manual_confirmed'")
+192:  c.commit(); return c
+193: 
+194: def persist_search_docs(con, component_id, docs):
+195:  # Suchergebnisse projektweit speichern. Bereits getroffene Projektbestätigungen bleiben bei erneuter Suche erhalten.
+196:  confirmed_before={(r[0],r[1]):(r[2],r[3],r[4]) for r in con.execute('SELECT title,source_url,project_confirmed,project_decision,project_decision_note FROM documents WHERE component_id=?',(component_id,)).fetchall()}
+197:  con.execute('UPDATE components SET docs_searched=1 WHERE id=?',(component_id,))
+198:  con.execute("DELETE FROM documents WHERE component_id=? AND (local_path IS NULL OR local_path='')",(component_id,))
+199:  for d in docs:
+200:   if not d.get('Relevant'): continue
+201:   online=not d.get('Downloadbar',True)
+
+MATCH LINE 181
+157:  normalized=re.sub(r'\s+',' ',raw.upper())
+158:  if 'helios' in maker and re.fullmatch(r'SB\s*\d{2,4}\s*[A-Z]',normalized):
+159:   return (' '.join(re.findall(r'[A-Z]+|\d+',normalized)), '', 'type')
+160:  if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\-][A-Z0-9]+)*',normalized):
+161:   return (normalized, '', 'type')
+162:  if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\s*150\s*U|800)',normalized):
+163:   return (normalized, '', 'type')
+164:  return ('',raw,'unclassified')
+165: 
+166: def db():
+167:  c=sqlite3.connect(DB)
+168:  c.execute('CREATE TABLE IF NOT EXISTS components(id INTEGER PRIMARY KEY, project TEXT, manufacturer TEXT, product TEXT, article_no TEXT, confidence INTEGER, status TEXT, docs_searched INTEGER DEFAULT 0)')
+169:  c.execute('CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY, component_id INTEGER, doc_type TEXT, title TEXT, source_url TEXT, verified INTEGER DEFAULT 0, confidence INTEGER DEFAULT 0, source_page TEXT DEFAULT "", local_path TEXT DEFAULT "", download_status TEXT DEFAULT "", priority TEXT DEFAULT "")')
+170:  c.execute('CREATE TABLE IF NOT EXISTS component_selections(component_id INTEGER, selection TEXT, PRIMARY KEY(component_id,selection))')
+171:  c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')
+172:  try:
+173:   c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')
+174:  except Exception as exc:
+175:   if 'duplicate column name' not in str(exc).lower(): raise
+176:  c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+177:  c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != ""')
+178:  ccols={r[1] for r in c.execute('PRAGMA table_info(components)').fetchall()}
+179:  if 'docs_searched' not in ccols: c.execute('ALTER TABLE components ADD COLUMN docs_searched INTEGER DEFAULT 0')
+180:  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT ""')
+181:  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT ""')
+182:  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():
+183:   _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)
+184:   if _kind=='type' and not str(_model or '').strip():
+185:    c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))
+186:  if 'product_name_confirmed' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_name_confirmed INTEGER DEFAULT 0')
+187:  cols={r[1] for r in c.execute('PRAGMA table_info(documents)').fetchall()}
+188:  for name,sql in [('confidence','INTEGER DEFAULT 0'),('source_page','TEXT DEFAULT ""'),('local_path','TEXT DEFAULT ""'),('download_status','TEXT DEFAULT ""'),('priority','TEXT DEFAULT ""'),('project_confirmed','INTEGER DEFAULT 0'),('project_decision','TEXT DEFAULT ""'),('project_decision_note','TEXT DEFAULT ""')]:
+189:   if name not in cols: c.execute(f'ALTER TABLE documents ADD COLUMN {name} {sql}')
+190:  c.execute("UPDATE documents SET project_confirmed=0 WHERE title LIKE '%Mapress Therm%Installation / Verarbeitung%' AND project_confirmed=1 AND (project_decision IS NULL OR project_decision='')")
+191:  c.execute("UPDATE documents SET project_confirmed=0,project_decision='',project_decision_note='' WHERE title='Anwendbarkeitsnachweise' AND project_decision='manual_confirmed'")
+192:  c.commit(); return c
+193: 
+194: def persist_search_docs(con, component_id, docs):
+195:  # Suchergebnisse projektweit speichern. Bereits getroffene Projektbestätigungen bleiben bei erneuter Suche erhalten.
+196:  confirmed_before={(r[0],r[1]):(r[2],r[3],r[4]) for r in con.execute('SELECT title,source_url,project_confirmed,project_decision,project_decision_note FROM documents WHERE component_id=?',(component_id,)).fetchall()}
+197:  con.execute('UPDATE components SET docs_searched=1 WHERE id=?',(component_id,))
+198:  con.execute("DELETE FROM documents WHERE component_id=? AND (local_path IS NULL OR local_path='')",(component_id,))
+199:  for d in docs:
+200:   if not d.get('Relevant'): continue
+201:   online=not d.get('Downloadbar',True)
+202:   verified=1 if online else 0
+203:   dstatus='Online-Nachweis' if online else 'Fundstelle gefunden'
+204:   title=d.get('Titel','Dokument'); url=d.get('URL',''); confirmed,decision,note=confirmed_before.get((title,url),(0,'',''))
+205:   con.execute('INSERT INTO documents(component_id,doc_type,title,source_url,verified,confidence,source_page,local_path,download_status,priority,project_confirmed,project_decision,project_decision_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(component_id,d.get('Kategorie','Sonstiges'),title,url,verified,d.get('Treffer %',0),d.get('Quellseite',''),'',dstatus,d.get('Priorität',''),confirmed,decision,note))
+206:  con.commit()
+207: 
+208: def get_component_selections(con, component_id):
+209:  return [r[0] for r in con.execute('SELECT selection FROM component_selections WHERE component_id=? ORDER BY selection',(component_id,)).fetchall()]
+210: 
+211: def save_component_selections(con, component_id, selections):
+212:  con.execute('DELETE FROM component_selections WHERE component_id=?',(component_id,))
+213:  for sel in selections:
+214:   con.execute('INSERT OR IGNORE INTO component_selections(component_id,selection) VALUES(?,?)',(component_id,sel))
+215:  con.commit()
+216: 
+
+MATCH LINE 182
+158:  if 'helios' in maker and re.fullmatch(r'SB\s*\d{2,4}\s*[A-Z]',normalized):
+159:   return (' '.join(re.findall(r'[A-Z]+|\d+',normalized)), '', 'type')
+160:  if 'trox' in maker and re.fullmatch(r'(?:FKRS-EU|FK2-EU|TVE|FV-EU|VFL)(?:[/\-][A-Z0-9]+)*',normalized):
+161:   return (normalized, '', 'type')
+162:  if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\s*150\s*U|800)',normalized):
+163:   return (normalized, '', 'type')
+164:  return ('',raw,'unclassified')
+165: 
+166: def db():
+167:  c=sqlite3.connect(DB)
+168:  c.execute('CREATE TABLE IF NOT EXISTS components(id INTEGER PRIMARY KEY, project TEXT, manufacturer TEXT, product TEXT, article_no TEXT, confidence INTEGER, status TEXT, docs_searched INTEGER DEFAULT 0)')
+169:  c.execute('CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY, component_id INTEGER, doc_type TEXT, title TEXT, source_url TEXT, verified INTEGER DEFAULT 0, confidence INTEGER DEFAULT 0, source_page TEXT DEFAULT "", local_path TEXT DEFAULT "", download_status TEXT DEFAULT "", priority TEXT DEFAULT "")')
+170:  c.execute('CREATE TABLE IF NOT EXISTS component_selections(component_id INTEGER, selection TEXT, PRIMARY KEY(component_id,selection))')
+171:  c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')
+172:  try:
+173:   c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')
+174:  except Exception as exc:
+175:   if 'duplicate column name' not in str(exc).lower(): raise
+176:  c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+177:  c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != ""')
+178:  ccols={r[1] for r in c.execute('PRAGMA table_info(components)').fetchall()}
+179:  if 'docs_searched' not in ccols: c.execute('ALTER TABLE components ADD COLUMN docs_searched INTEGER DEFAULT 0')
+180:  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT ""')
+181:  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT ""')
+182:  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():
+183:   _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)
+184:   if _kind=='type' and not str(_model or '').strip():
+185:    c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))
+186:  if 'product_name_confirmed' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_name_confirmed INTEGER DEFAULT 0')
+187:  cols={r[1] for r in c.execute('PRAGMA table_info(documents)').fetchall()}
+188:  for name,sql in [('confidence','INTEGER DEFAULT 0'),('source_page','TEXT DEFAULT ""'),('local_path','TEXT DEFAULT ""'),('download_status','TEXT DEFAULT ""'),('priority','TEXT DEFAULT ""'),('project_confirmed','INTEGER DEFAULT 0'),('project_decision','TEXT DEFAULT ""'),('project_decision_note','TEXT DEFAULT ""')]:
+189:   if name not in cols: c.execute(f'ALTER TABLE documents ADD COLUMN {name} {sql}')
+190:  c.execute("UPDATE documents SET project_confirmed=0 WHERE title LIKE '%Mapress Therm%Installation / Verarbeitung%' AND project_confirmed=1 AND (project_decision IS NULL OR project_decision='')")
+191:  c.execute("UPDATE documents SET project_confirmed=0,project_decision='',project_decision_note='' WHERE title='Anwendbarkeitsnachweise' AND project_decision='manual_confirmed'")
+192:  c.commit(); return c
+193: 
+194: def persist_search_docs(con, component_id, docs):
+195:  # Suchergebnisse projektweit speichern. Bereits getroffene Projektbestätigungen bleiben bei erneuter Suche erhalten.
+196:  confirmed_before={(r[0],r[1]):(r[2],r[3],r[4]) for r in con.execute('SELECT title,source_url,project_confirmed,project_decision,project_decision_note FROM documents WHERE component_id=?',(component_id,)).fetchall()}
+197:  con.execute('UPDATE components SET docs_searched=1 WHERE id=?',(component_id,))
+198:  con.execute("DELETE FROM documents WHERE component_id=? AND (local_path IS NULL OR local_path='')",(component_id,))
+199:  for d in docs:
+200:   if not d.get('Relevant'): continue
+201:   online=not d.get('Downloadbar',True)
+202:   verified=1 if online else 0
+203:   dstatus='Online-Nachweis' if online else 'Fundstelle gefunden'
+204:   title=d.get('Titel','Dokument'); url=d.get('URL',''); confirmed,decision,note=confirmed_before.get((title,url),(0,'',''))
+205:   con.execute('INSERT INTO documents(component_id,doc_type,title,source_url,verified,confidence,source_page,local_path,download_status,priority,project_confirmed,project_decision,project_decision_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(component_id,d.get('Kategorie','Sonstiges'),title,url,verified,d.get('Treffer %',0),d.get('Quellseite',''),'',dstatus,d.get('Priorität',''),confirmed,decision,note))
+206:  con.commit()
+207: 
+208: def get_component_selections(con, component_id):
+209:  return [r[0] for r in con.execute('SELECT selection FROM component_selections WHERE component_id=? ORDER BY selection',(component_id,)).fetchall()]
+210: 
+211: def save_component_selections(con, component_id, selections):
+212:  con.execute('DELETE FROM component_selections WHERE component_id=?',(component_id,))
+213:  for sel in selections:
+214:   con.execute('INSERT OR IGNORE INTO component_selections(component_id,selection) VALUES(?,?)',(component_id,sel))
+215:  con.commit()
+216: 
+217: def get_application_groups(con, component_id):
+
+MATCH LINE 185
+161:   return (normalized, '', 'type')
+162:  if 'rockwool' in maker and re.fullmatch(r'(?:CONLIT\s*150\s*U|800)',normalized):
+163:   return (normalized, '', 'type')
+164:  return ('',raw,'unclassified')
+165: 
+166: def db():
+167:  c=sqlite3.connect(DB)
+168:  c.execute('CREATE TABLE IF NOT EXISTS components(id INTEGER PRIMARY KEY, project TEXT, manufacturer TEXT, product TEXT, article_no TEXT, confidence INTEGER, status TEXT, docs_searched INTEGER DEFAULT 0)')
+169:  c.execute('CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY, component_id INTEGER, doc_type TEXT, title TEXT, source_url TEXT, verified INTEGER DEFAULT 0, confidence INTEGER DEFAULT 0, source_page TEXT DEFAULT "", local_path TEXT DEFAULT "", download_status TEXT DEFAULT "", priority TEXT DEFAULT "")')
+170:  c.execute('CREATE TABLE IF NOT EXISTS component_selections(component_id INTEGER, selection TEXT, PRIMARY KEY(component_id,selection))')
+171:  c.execute('CREATE TABLE IF NOT EXISTS component_application_groups(component_id INTEGER, group_code TEXT, PRIMARY KEY(component_id,group_code))')
+172:  try:
+173:   c.execute('ALTER TABLE components ADD COLUMN gewerk TEXT')
+174:  except Exception as exc:
+175:   if 'duplicate column name' not in str(exc).lower(): raise
+176:  c.execute('CREATE TABLE IF NOT EXISTS projects(name TEXT PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+177:  c.execute('INSERT OR IGNORE INTO projects(name) SELECT DISTINCT project FROM components WHERE project IS NOT NULL AND TRIM(project) != ""')
+178:  ccols={r[1] for r in c.execute('PRAGMA table_info(components)').fetchall()}
+179:  if 'docs_searched' not in ccols: c.execute('ALTER TABLE components ADD COLUMN docs_searched INTEGER DEFAULT 0')
+180:  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT ""')
+181:  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT ""')
+182:  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():
+183:   _type,_article_clean,_kind=classify_component_identifier(_maker,_product,_article)
+184:   if _kind=='type' and not str(_model or '').strip():
+185:    c.execute('UPDATE components SET model_type=?,article_no=? WHERE id=?',(_type,_article_clean,_cid))
+186:  if 'product_name_confirmed' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_name_confirmed INTEGER DEFAULT 0')
+187:  cols={r[1] for r in c.execute('PRAGMA table_info(documents)').fetchall()}
+188:  for name,sql in [('confidence','INTEGER DEFAULT 0'),('source_page','TEXT DEFAULT ""'),('local_path','TEXT DEFAULT ""'),('download_status','TEXT DEFAULT ""'),('priority','TEXT DEFAULT ""'),('project_confirmed','INTEGER DEFAULT 0'),('project_decision','TEXT DEFAULT ""'),('project_decision_note','TEXT DEFAULT ""')]:
+189:   if name not in cols: c.execute(f'ALTER TABLE documents ADD COLUMN {name} {sql}')
+190:  c.execute("UPDATE documents SET project_confirmed=0 WHERE title LIKE '%Mapress Therm%Installation / Verarbeitung%' AND project_confirmed=1 AND (project_decision IS NULL OR project_decision='')")
+191:  c.execute("UPDATE documents SET project_confirmed=0,project_decision='',project_decision_note='' WHERE title='Anwendbarkeitsnachweise' AND project_decision='manual_confirmed'")
+192:  c.commit(); return c
+193: 
+194: def persist_search_docs(con, component_id, docs):
+195:  # Suchergebnisse projektweit speichern. Bereits getroffene Projektbestätigungen bleiben bei erneuter Suche erhalten.
+196:  confirmed_before={(r[0],r[1]):(r[2],r[3],r[4]) for r in con.execute('SELECT title,source_url,project_confirmed,project_decision,project_decision_note FROM documents WHERE component_id=?',(component_id,)).fetchall()}
+197:  con.execute('UPDATE components SET docs_searched=1 WHERE id=?',(component_id,))
+198:  con.execute("DELETE FROM documents WHERE component_id=? AND (local_path IS NULL OR local_path='')",(component_id,))
+199:  for d in docs:
+200:   if not d.get('Relevant'): continue
+201:   online=not d.get('Downloadbar',True)
+202:   verified=1 if online else 0
+203:   dstatus='Online-Nachweis' if online else 'Fundstelle gefunden'
+204:   title=d.get('Titel','Dokument'); url=d.get('URL',''); confirmed,decision,note=confirmed_before.get((title,url),(0,'',''))
+205:   con.execute('INSERT INTO documents(component_id,doc_type,title,source_url,verified,confidence,source_page,local_path,download_status,priority,project_confirmed,project_decision,project_decision_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(component_id,d.get('Kategorie','Sonstiges'),title,url,verified,d.get('Treffer %',0),d.get('Quellseite',''),'',dstatus,d.get('Priorität',''),confirmed,decision,note))
+206:  con.commit()
+207: 
+208: def get_component_selections(con, component_id):
+209:  return [r[0] for r in con.execute('SELECT selection FROM component_selections WHERE component_id=? ORDER BY selection',(component_id,)).fetchall()]
+210: 
+211: def save_component_selections(con, component_id, selections):
+212:  con.execute('DELETE FROM component_selections WHERE component_id=?',(component_id,))
+213:  for sel in selections:
+214:   con.execute('INSERT OR IGNORE INTO component_selections(component_id,selection) VALUES(?,?)',(component_id,sel))
+215:  con.commit()
+216: 
+217: def get_application_groups(con, component_id):
+218:  return [r[0] for r in con.execute('SELECT group_code FROM component_application_groups WHERE component_id=? ORDER BY group_code',(component_id,)).fetchall()]
+219: 
+220: def save_application_groups(con, component_id, group_codes):
+
+MATCH LINE 304
+280:  recommended=sum(1 for prio,_,_,_,_ in docs if prio=='Empfohlen')
+281:  if checks or recommended==0:
+282:   return '🟡 Prüfung/offene Unterlagen'
+283:  return '🟢 Dokumentation geklärt'
+284: 
+285: def clean(v):
+286:  if pd.isna(v): return ''
+287:  return re.sub(r'\s+',' ',str(v)).strip()
+288: 
+289: def detect_header(raw):
+290:  aliases={
+291:   'hersteller': {'hersteller','hersteller/fabrikat','fabrikat'},
+292:   'bezeichnung': {'bezeichnung','produkt/bezeichnung','produkt','produktbezeichnung'},
+293:   'artikelnummer': {'artikelnummer','typ/modell','typ','modell','artikel-nr.','artikel-nr'},
+294:   'gewerk': {'gewerk'}
+295:  }
+296:  def normalize(x):
+297:   return re.sub(r'\s*[/]\s*','/',clean(x).lower()).strip(' :')
+298:  for i,row in raw.head(40).iterrows():
+299:   values={normalize(x) for x in row.tolist()}
+300:   if len(values & aliases['bezeichnung'])>=1 and len(values & (aliases['hersteller']|aliases['artikelnummer']))>=1:
+301:    return i
+302:  raise ValueError('Keine passende Kopfzeile gefunden. Erwartet: Produkt/Bezeichnung und Hersteller/Fabrikat oder Typ/Modell.')
+303: 
+304: def read_excel(data):
+305:  raw=pd.read_excel(io.BytesIO(data),header=None)
+306:  h=detect_header(raw)
+307:  df=pd.read_excel(io.BytesIO(data),header=h).dropna(axis=1,how='all').dropna(axis=0,how='all')
+308:  aliases={
+309:   'Hersteller':['hersteller','hersteller/fabrikat','fabrikat'],
+310:   'Bezeichnung':['bezeichnung','produkt/bezeichnung','produkt','produktbezeichnung'],
+311:   'Artikelnummer':['artikelnummer','typ/modell','typ','modell','artikel-nr.','artikel-nr'],
+312:   'Gewerk':['gewerk']
+313:  }
+314:  def normalize(x):return re.sub(r'\s*[/]\s*','/',clean(x).lower()).strip(' :')
+315:  cols={normalize(c):c for c in df.columns}
+316:  out=pd.DataFrame()
+317:  for target,choices in aliases.items():
+318:   col=next((cols[c] for c in choices if c in cols),None)
+319:   out[target]=df[col].map(clean) if col is not None else ''
+320:  out=out[(out.Hersteller!='')|(out.Bezeichnung!='')].reset_index(drop=True)
+321:  if out.empty:raise ValueError('Keine Produktzeilen gefunden.')
+322:  return out
+323: 
+324: def score(r): return min(45+(20 if r['Hersteller'] else 0)+(20 if r['Bezeichnung'] else 0)+(15 if r['Artikelnummer'] else 0),100)
+325: def status(s): return 'Automatisch prüfbar' if s>=95 else ('Bestätigung empfohlen' if s>=75 else 'Manuelle Prüfung')
+326: def safe(v): return (re.sub(r'[^A-Za-z0-9ÄÖÜäöüß._-]+','_',clean(v)).strip('._')[:120] or 'dokument')
+327: 
+328: def product_key(m,p):
+329:  ml=clean(m).lower(); pu=clean(p).upper()
+330:  # Herstellerbezeichnungen aus Excel dürfen Zusätze enthalten.
+331:  if 'rockwool' in ml: ml='rockwool'
+332:  elif 'trox' in ml: ml='trox'
+333:  # Unterstützte ROCKWOOL-Produktfamilien robust normalisieren.
+334:  if ml=='rockwool':
+335:   if 'CONLIT' in pu and ('150 U' in pu or pu.endswith(' U') or pu=='CONLIT U'): return (ml,'CONLIT U')
+336:   if re.search(r'(^|\D)800($|\D)', pu): return (ml,'800')
+337:  return (ml,pu)
+338: 
+339: def is_rockwool_conlit(manufacturer, product):
+
+MATCH LINE 324
+300:   if len(values & aliases['bezeichnung'])>=1 and len(values & (aliases['hersteller']|aliases['artikelnummer']))>=1:
+301:    return i
+302:  raise ValueError('Keine passende Kopfzeile gefunden. Erwartet: Produkt/Bezeichnung und Hersteller/Fabrikat oder Typ/Modell.')
+303: 
+304: def read_excel(data):
+305:  raw=pd.read_excel(io.BytesIO(data),header=None)
+306:  h=detect_header(raw)
+307:  df=pd.read_excel(io.BytesIO(data),header=h).dropna(axis=1,how='all').dropna(axis=0,how='all')
+308:  aliases={
+309:   'Hersteller':['hersteller','hersteller/fabrikat','fabrikat'],
+310:   'Bezeichnung':['bezeichnung','produkt/bezeichnung','produkt','produktbezeichnung'],
+311:   'Artikelnummer':['artikelnummer','typ/modell','typ','modell','artikel-nr.','artikel-nr'],
+312:   'Gewerk':['gewerk']
+313:  }
+314:  def normalize(x):return re.sub(r'\s*[/]\s*','/',clean(x).lower()).strip(' :')
+315:  cols={normalize(c):c for c in df.columns}
+316:  out=pd.DataFrame()
+317:  for target,choices in aliases.items():
+318:   col=next((cols[c] for c in choices if c in cols),None)
+319:   out[target]=df[col].map(clean) if col is not None else ''
+320:  out=out[(out.Hersteller!='')|(out.Bezeichnung!='')].reset_index(drop=True)
+321:  if out.empty:raise ValueError('Keine Produktzeilen gefunden.')
+322:  return out
+323: 
+324: def score(r): return min(45+(20 if r['Hersteller'] else 0)+(20 if r['Bezeichnung'] else 0)+(15 if r['Artikelnummer'] else 0),100)
+325: def status(s): return 'Automatisch prüfbar' if s>=95 else ('Bestätigung empfohlen' if s>=75 else 'Manuelle Prüfung')
+326: def safe(v): return (re.sub(r'[^A-Za-z0-9ÄÖÜäöüß._-]+','_',clean(v)).strip('._')[:120] or 'dokument')
+327: 
+328: def product_key(m,p):
+329:  ml=clean(m).lower(); pu=clean(p).upper()
+330:  # Herstellerbezeichnungen aus Excel dürfen Zusätze enthalten.
+331:  if 'rockwool' in ml: ml='rockwool'
+332:  elif 'trox' in ml: ml='trox'
+333:  # Unterstützte ROCKWOOL-Produktfamilien robust normalisieren.
+334:  if ml=='rockwool':
+335:   if 'CONLIT' in pu and ('150 U' in pu or pu.endswith(' U') or pu=='CONLIT U'): return (ml,'CONLIT U')
+336:   if re.search(r'(^|\D)800($|\D)', pu): return (ml,'800')
+337:  return (ml,pu)
+338: 
+339: def is_rockwool_conlit(manufacturer, product):
+340:  return 'rockwool' in clean(manufacturer).lower() and product_key(manufacturer,product)[1]=='CONLIT U'
+341: 
+342: def is_trox_fk2(manufacturer, product):
+343:  return clean(manufacturer).lower()=='trox' and clean(product).upper()=='FK2-EU'
+344: 
+345: FK2_APPLICATION_GROUPS={
+346:  'fk2_standard':'Standardanwendung',
+347:  'fk2_atex':'ATEX / explosionsgefährdeter Bereich',
+348:  'fk2_special_mounting':'Montage-Sonderanwendung',
+349: }
+350: 
+351: def fk2_check_group(doc_type):
+352:  if doc_type=='ATEX': return 'fk2_atex'
+353:  if doc_type=='Montage – Sonderanwendung': return 'fk2_special_mounting'
+354:  return ''
+355: 
+356: def _fk2_version_key(title):
+357:  # Neueste Fassung aus TROX-Dateinamen bevorzugen (z. B. V3_2025_08 bzw. 2022_07_06).
+358:  t=clean(title)
+359:  dates=re.findall(r'(20\d{2})[_-](\d{2})(?:[_-](\d{2}))?',t)
+
+MATCH LINE 483
+459: MANUFACTURER_SEARCH_RULES={
+460:  'trox':{'domain':'trox.de','strategy':'official_product_page'},
+461:  'rockwool':{'domain':'rockwool.com','strategy':'official_product_page'},
+462: }
+463: 
+464: def manufacturer_search_rule(manufacturer):
+465:  key=clean(manufacturer).lower()
+466:  for name,rule in MANUFACTURER_SEARCH_RULES.items():
+467:   if name in key:return rule
+468:  return None
+469: 
+470: def previous_verified_product_documents(con,manufacturer,product,article,project):
+471:  # Reuse only exact manufacturer/product/article matches from other projects.
+472:  # This is a hint, never an automatic approval or a copied PDF.
+473:  if not clean(article):return []
+474:  rows=con.execute('SELECT c.manufacturer,c.product,c.article_no,c.project,d.doc_type,d.title,d.source_url FROM components c JOIN documents d ON d.component_id=c.id WHERE c.project!=? AND d.verified=1 AND d.source_url!="" ORDER BY c.project,d.doc_type',(project,)).fetchall()
+475:  expected=product_key(manufacturer,product)
+476:  result=[];seen=set()
+477:  for m,p,a,proj,kind,title,url in rows:
+478:   if product_key(m,p)!=expected or clean(a).upper()!=clean(article).upper():continue
+479:   if url in seen:continue
+480:   seen.add(url);result.append((proj,kind,title,url))
+481:  return result[:12]
+482: 
+483: def search_product_for_component(manufacturer,product,model):
+484:  ml=clean(manufacturer).lower()
+485:  if 'trox' not in ml:return product
+486:  import re
+487:  values=[clean(product).upper(),clean(model).upper()]
+488:  hits=set()
+489:  for val in values:
+490:   normalized=re.sub(r'[.‐‑‒–—−_\s]+','-',val)
+491:   for code in ('FKRS-EU','FK2-EU','TVE'):
+492:    if re.search(r'(?<![A-Z0-9])'+re.escape(code)+r'(?![A-Z0-9])',normalized):
+493:     hits.add(code)
+494:  if len(hits)==1:return next(iter(hits))
+495:  return product
+496: 
+497: def resolve_product_page(manufacturer, product):
+498:  key=product_key(manufacturer,product)
+499:  if key not in PRODUCTS:
+500:   raise ValueError('Für dieses Produkt ist die automatische Herstellersuche in v0.4.4 noch nicht freigeschaltet.')
+501:  rule=manufacturer_search_rule(manufacturer)
+502:  if not rule:raise ValueError('Für diesen Hersteller ist noch kein geprüftes Suchmodul hinterlegt.')
+503:  allowed=rule['domain']
+504:  errors=[]
+505:  for candidate in PRODUCTS[key]:
+506:   try:
+507:    host=urlparse(candidate).netloc.lower()
+508:    if allowed not in host:
+509:     continue
+510:    r=requests.get(candidate,headers={'User-Agent':'Mozilla/5.0 (TGA Product Finder v0.4.4)'},timeout=25,allow_redirects=True)
+511:    final_host=urlparse(r.url).netloc.lower()
+512:    if allowed not in final_host:
+513:     errors.append(f'{candidate}: Weiterleitung außerhalb der Herstellerdomain')
+514:     continue
+515:    if r.status_code==200:
+516:     return r.url, r
+517:    errors.append(f'{candidate}: HTTP {r.status_code}')
+518:   except requests.RequestException as e:
+
+MATCH LINE 1680
+1656:  try:
+1657:   con_saved=db()
+1658:   saved_count=con_saved.execute('SELECT COUNT(*) FROM components WHERE project=?',(project,)).fetchone()[0]
+1659:   con_saved.close()
+1660:  except Exception:
+1661:   saved_count=0
+1662:  if saved_count:
+1663:   st.success(f'Gespeichertes Projekt geladen: {saved_count} Komponenten. Kein erneuter Excel-Upload nötig.')
+1664:   with st.expander('Excel-Datei importieren / Projektbestand aktualisieren'):
+1665:    st.warning('Achtung: Beim Übernehmen einer neuen Excel-Liste werden die bisherigen Produktzuordnungen und Dokumentverknüpfungen dieses Projekts ersetzt. Andere Projekte bleiben unverändert.')
+1666:    upload=st.file_uploader('Komponentenliste auswählen',type=['xlsx'],key=f'project_excel_update_{project}')
+1667:  else:
+1668:   st.info('Für dieses Projekt ist noch keine Komponentenliste gespeichert. Bitte einmalig eine Excel-Datei importieren.')
+1669:   upload=st.file_uploader('Komponentenliste hochladen',type=['xlsx'],key=f'project_excel_initial_{project}')
+1670:  if upload:
+1671:   try:
+1672:    df=read_excel(upload.getvalue()); df['Erkennung %']=df.apply(score,axis=1); df['Status']=df['Erkennung %'].map(status); st.success(f'{len(df)} Komponenten erkannt.'); st.dataframe(df,width='stretch',hide_index=True)
+1673:    if st.button('Komponenten in Projekt übernehmen',type='primary'):
+1674:     con=db(); old_ids=[x[0] for x in con.execute('SELECT id FROM components WHERE project=?',(project,)).fetchall()]
+1675:     for old_id in old_ids:
+1676:      con.execute('DELETE FROM documents WHERE component_id=?',(old_id,)); con.execute('DELETE FROM component_selections WHERE component_id=?',(old_id,)); con.execute('DELETE FROM component_application_groups WHERE component_id=?',(old_id,))
+1677:     con.execute('DELETE FROM components WHERE project=?',(project,))
+1678:     for _,r in df.iterrows():
+1679:      _typ,_article,_kind=classify_component_identifier(r.Hersteller,r.Bezeichnung,r.Artikelnummer)
+1680:      con.execute('INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched,gewerk) VALUES(?,?,?,?,?,?,?,0,?)',(project,r.Hersteller,r.Bezeichnung,_article,_typ,score(r),status(score(r)),r.Gewerk))
+1681:     con.commit(); st.success('Projekt gespeichert.'); st.rerun()
+1682:   except Exception as e:st.error(str(e))
+1683: con=db(); rows=con.execute('SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id',(project,)).fetchall()
+1684: def refresh_project_upload_links(con,project):
+1685:  """Re-evaluate stored file evidence against the current component inventory."""
+1686:  import hashlib
+1687:  from pathlib import Path
+1688:  import pandas as pd
+1689:  import io,zipfile,xml.etree.ElementTree as ET
+1690:  con.execute('CREATE TABLE IF NOT EXISTS project_uploads(id INTEGER PRIMARY KEY,project TEXT NOT NULL,filename TEXT NOT NULL,sha256 TEXT NOT NULL,path TEXT NOT NULL,uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(project,sha256))')
+1691:  con.execute('CREATE TABLE IF NOT EXISTS project_upload_links(upload_id INTEGER NOT NULL,component_id INTEGER NOT NULL,score INTEGER NOT NULL,confirmed INTEGER DEFAULT 0,PRIMARY KEY(upload_id,component_id))')
+1692:  items=con.execute('SELECT id,filename,path FROM project_uploads WHERE project=?',(project,)).fetchall()
+1693:  components=con.execute('SELECT id,manufacturer,product,article_no FROM components WHERE project=?',(project,)).fetchall()
+1694:  norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1695:  for uid,name,path in items:
+1696:   if not os.path.isfile(path):continue
+1697:   content=''
+1698:   ext=Path(name).suffix.lower()
+1699:   try:
+1700:    if ext=='.txt':content=Path(path).read_text(encoding='utf-8',errors='replace')
+1701:    elif ext=='.pdf':
+1702:     from pypdf import PdfReader
+1703:     reader=PdfReader(path);content=' '.join((page.extract_text() or '') for page in reader.pages[:50])
+1704:    elif ext in ('.xlsx','.xlsm'):
+1705:     sheets=pd.read_excel(path,sheet_name=None,header=None,nrows=500)
+1706:     content=' '.join(' '.join(df.fillna('').astype(str).to_numpy().flatten()) for df in sheets.values())
+1707:    elif ext=='.docx':
+1708:     with zipfile.ZipFile(path) as archive:
+1709:      xml=ET.fromstring(archive.read('word/document.xml'))
+1710:      content=' '.join(n.text or '' for n in xml.iter() if n.tag.endswith('}t'))
+1711:   except Exception:pass
+1712:   hay=norm(name+' '+content[:250000])
+1713:   for cid,m,p,a in components:
+1714:    manufacturer=norm(m)
+1715:    article=norm(a)
+
+MATCH LINE 1825
+1801:    except Exception as _exc:_messages.append(_up.name+': Fehler – '+str(_exc))
+1802:   con.commit()
+1803:   for _message in _messages:st.write(_message)
+1804:  _stored=con.execute('SELECT id,filename,path FROM project_uploads WHERE project=? ORDER BY id DESC',(project,)).fetchall()
+1805:  refresh_project_upload_links(con,project)
+1806:  st.markdown('**Gespeicherte Projektdateien und Zuordnungsvorschläge**')
+1807:  if not _stored:st.info('Noch keine individuellen Projektdateien hochgeladen.')
+1808:  for _uid,_filename,_path in _stored:
+1809:   with st.expander(_filename):
+1810:    if os.path.isfile(_path):
+1811:     with open(_path,'rb') as _stream:st.download_button('Datei öffnen / herunterladen',_stream.read(),file_name=_filename,key=f'upload_file_{_uid}')
+1812:    _matches=con.execute('SELECT l.component_id,c.manufacturer,c.product,c.article_no,l.score,l.confirmed FROM project_upload_links l JOIN components c ON c.id=l.component_id WHERE l.upload_id=? AND c.project=? ORDER BY l.score DESC',(_uid,project)).fetchall()
+1813:    if not _matches:st.info('Keine eindeutige Produktzuordnung erkannt. Datei bleibt im Projektarchiv.')
+1814:    for _cid,_m,_p,_a,_score,_confirmed in _matches:
+1815:     _left,_right=st.columns([4,1])
+1816:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1817:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1818:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1819:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1820: 
+1821: if _tga_page=='📊 Dokumentenübersicht':
+1822:  refresh_project_upload_links(con,project)
+1823:  st.subheader('📊 Dokumentenübersicht')
+1824:  if rows:
+1825:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1826:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1827:   overview=[]
+1828:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1829:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1830:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1831:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1832:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1833:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1834:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1835:    selections=get_component_selections(con,ocid)
+1836:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1837:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1838:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1839:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1840:    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1841:   ovdf=pd.DataFrame(overview)
+1842:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1843:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1844:   k1,k2,k3,k4,k5=st.columns(5)
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+
+MATCH LINE 1836
+1812:    _matches=con.execute('SELECT l.component_id,c.manufacturer,c.product,c.article_no,l.score,l.confirmed FROM project_upload_links l JOIN components c ON c.id=l.component_id WHERE l.upload_id=? AND c.project=? ORDER BY l.score DESC',(_uid,project)).fetchall()
+1813:    if not _matches:st.info('Keine eindeutige Produktzuordnung erkannt. Datei bleibt im Projektarchiv.')
+1814:    for _cid,_m,_p,_a,_score,_confirmed in _matches:
+1815:     _left,_right=st.columns([4,1])
+1816:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1817:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1818:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1819:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1820: 
+1821: if _tga_page=='📊 Dokumentenübersicht':
+1822:  refresh_project_upload_links(con,project)
+1823:  st.subheader('📊 Dokumentenübersicht')
+1824:  if rows:
+1825:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1826:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1827:   overview=[]
+1828:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1829:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1830:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1831:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1832:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1833:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1834:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1835:    selections=get_component_selections(con,ocid)
+1836:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1837:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1838:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1839:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1840:    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1841:   ovdf=pd.DataFrame(overview)
+1842:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1843:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1844:   k1,k2,k3,k4,k5=st.columns(5)
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+
+MATCH LINE 1838
+1814:    for _cid,_m,_p,_a,_score,_confirmed in _matches:
+1815:     _left,_right=st.columns([4,1])
+1816:     _left.write(f'{_m} · {_p} · {_a or "ohne Typ"} – {_score}% Übereinstimmung')
+1817:     if _right.checkbox('Bestätigt',value=bool(_confirmed),key=f'upload_confirm_{_uid}_{_cid}'):
+1818:      if not _confirmed:con.execute('UPDATE project_upload_links SET confirmed=1 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1819:     elif _confirmed:con.execute('UPDATE project_upload_links SET confirmed=0 WHERE upload_id=? AND component_id=?',(_uid,_cid));con.commit()
+1820: 
+1821: if _tga_page=='📊 Dokumentenübersicht':
+1822:  refresh_project_upload_links(con,project)
+1823:  st.subheader('📊 Dokumentenübersicht')
+1824:  if rows:
+1825:   st.divider(); st.subheader('📊 Projekt-Dokumentationsübersicht')
+1826:   # Die Übersicht trennt Produkterkennung bewusst vom Dokumentationsstand.
+1827:   overview=[]
+1828:   for ocid,om,op,oa,oconf,ostat,osearched in rows:
+1829:    odb=con.execute('SELECT priority,verified,local_path,download_status,project_confirmed FROM documents WHERE component_id=?',(ocid,)).fetchall()
+1830:    ooffline=sum(1 for _,_,opath,_,_ in odb if opath and os.path.exists(opath))
+1831:    oonline=sum(1 for prio,verified,opath,dstatus,_ in odb if prio=='Empfohlen' and verified and not (opath and os.path.exists(opath)))
+1832:    orecommended=sum(1 for prio,_,_,_,_ in odb if prio=='Empfohlen')
+1833:    ocheck=sum(1 for prio,_,_,_,confirmed in odb if prio in ['Anwendungsfall prüfen','Optional / Ausführung prüfen'] and not confirmed)
+1834:    docstatus=documentation_light(bool(osearched or ooffline),odb)
+1835:    selections=get_component_selections(con,ocid)
+1836:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1837:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1838:    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()
+1839:    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op
+1840:    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})
+1841:   ovdf=pd.DataFrame(overview)
+1842:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1843:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1844:   k1,k2,k3,k4,k5=st.columns(5)
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+
+MATCH LINE 1865
+1841:   ovdf=pd.DataFrame(overview)
+1842:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1843:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1844:   k1,k2,k3,k4,k5=st.columns(5)
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+
+MATCH LINE 1866
+1842:   total=len(overview); auto_ok=sum(1 for x in overview if x['Erkennung %']>=95); need_confirm=total-auto_ok
+1843:   searched=sum(1 for x in overview if not x['Status'].startswith('🔴')); offline=sum(x['Offline-PDFs'] for x in overview); online=sum(x['Online-Nachweise'] for x in overview); checks=sum(x['Prüfen'] for x in overview)
+1844:   k1,k2,k3,k4,k5=st.columns(5)
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+1901:    if any(x in str(m).lower() for x in ('trox','helios','danfoss')):
+
+MATCH LINE 1869
+1845:   k1.metric('Bauteile',total); k2.metric('≥95 % erkannt',auto_ok); k3.metric('Bestätigung nötig',need_confirm); k4.metric('Offline-PDFs',offline); k5.metric('Online-Nachweise',online)
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+1901:    if any(x in str(m).lower() for x in ('trox','helios','danfoss')):
+1902:     import urllib.parse
+1903:     _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)
+1904:     _term='site:'+_domain+' '+str(m)+' '+str(a or p)
+
+MATCH LINE 1870
+1846:   st.caption(f'Dokumentensuche ausgeführt: {searched} von {total} Bauteilen · offene fachliche Prüfungen: {checks}. Status: 🔴 noch nicht bearbeitet · 🟡 Prüfung/offene Unterlagen · 🟢 Dokumentation geklärt.')
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+1901:    if any(x in str(m).lower() for x in ('trox','helios','danfoss')):
+1902:     import urllib.parse
+1903:     _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)
+1904:     _term='site:'+_domain+' '+str(m)+' '+str(a or p)
+1905:     st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))
+
+MATCH LINE 1871
+1847:   st.dataframe(ovdf,width='stretch',hide_index=True)
+1848:   st.divider()
+1849:  st.subheader('📁 Offline-Dokumente dieses Projekts')
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+1901:    if any(x in str(m).lower() for x in ('trox','helios','danfoss')):
+1902:     import urllib.parse
+1903:     _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)
+1904:     _term='site:'+_domain+' '+str(m)+' '+str(a or p)
+1905:     st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))
+1906:     st.link_button('Hersteller-PDFs suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term+' Datenblatt Montageanleitung PDF'))
+
+MATCH LINE 1874
+1850:  st.caption('Nur tatsächlich gespeicherte PDF-Dateien werden hier als offline verfügbar angezeigt. Online-Nachweise bleiben online.')
+1851:  _offline_rows=con.execute("SELECT c.manufacturer,c.product,d.doc_type,d.title,d.local_path FROM documents d JOIN components c ON c.id=d.component_id WHERE c.project=? AND d.local_path IS NOT NULL AND d.local_path != '' ORDER BY c.manufacturer,c.product,d.doc_type",(project,)).fetchall()
+1852:  _offline_valid=[(m,p,typ,title,path) for m,p,typ,title,path in _offline_rows if os.path.isfile(path)]
+1853:  if not _offline_valid:
+1854:   st.info('Für dieses Projekt sind noch keine Offline-PDFs gespeichert.')
+1855:  else:
+1856:   st.success(f'{len(_offline_valid)} Offline-PDF(s) für dieses Projekt vorhanden.')
+1857:   for _idx,(_m,_p,_typ,_title,_path) in enumerate(_offline_valid):
+1858:    _left,_right=st.columns([4,1])
+1859:    _left.write(f'**{_m} · {_p}** – {_typ}: {_title}')
+1860:    with open(_path,'rb') as _pdf:
+1861:     _right.download_button('PDF öffnen / speichern',data=_pdf.read(),file_name=Path(_path).name,mime='application/pdf',key=f'project_offline_{_idx}_{project}')
+1862:  st.divider(); st.subheader('Komponenten & Dokumentenmappen'); st.info('Automatisch freigeschaltet: TROX FK2-EU/TVE sowie ROCKWOOL 800/Conlit U. „Empfohlen“ ist eine regelbasierte Vorauswahl; Sonderausführungen und ROCKWOOL-Anwendbarkeitsnachweise müssen fachlich zum Einbau passen.')
+1863:  for cid,m,p,a,conf,stat,docs_searched in rows:
+1864:   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):
+1865:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1866:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1867:    if _new_model.strip()!=_current_model.strip():
+1868:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1869:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1870:    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''
+1871:    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')
+1872:    if _new_model.strip()!=_current_model.strip():
+1873:     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):
+1874:      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()
+1875:    st.write(f'**Bewertung:** {stat}')
+1876:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1877:     st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')
+1878:     if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):
+1879:      st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')
+1880:     for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)
+1881:    if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1882:     st.caption('Offizielle Helios-Dokumentensuche – PDF-Kandidaten prüfen')
+1883:     if st.button('HELIOS-Dokumente mit Versionsprüfung suchen',key=f'helios_index_{cid}'):
+1884:       _hits,_warnings=helios_search_pdf_candidates('SB 125 A')
+1885:       st.session_state[f'universal-hits-{cid}']=_hits
+1886:       st.session_state[f'universal-source-{cid}']='HELIOS-Produktseite'
+1887:       if _hits:st.success(f'{len(_hits)} verifizierte HELIOS-PDFs gefunden. Bitte unten prüfen und für die Offline-Speicherung auswählen.')
+1888:       else:st.warning('Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.')
+1889:       if _warnings:st.caption('Hinweise zur Suche: '+', '.join(_warnings[:3]))
+1890:     st.link_button('Helios PDF-Dokumente finden','https://www.google.com/search?q=site%3Aheliosventilatoren.de+SB+125+A+filetype%3Apdf')
+1891:    if 'danfoss' in str(m).lower() and 'eclcomfort310' in ''.join(c for c in str(a or p).lower() if c.isalnum()):
+1892:     st.caption('Offizielle Danfoss-Dokumentensuche – Ausführung prüfen')
+1893:     st.link_button('Danfoss PDF-Dokumente finden','https://www.google.com/search?q=site%3Aassets.danfoss.com+ECL+Comfort+310+filetype%3Apdf')
+1894:    _known_products={('helios','sb125a'):'https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506',('danfoss','eclcomfort310'):'https://www.danfoss.com/de-de/products/dhs/electronic-controls/electronic-controllers-and-application-keys/ecl-comfort-controllers/'}
+1895:    _norm=lambda x:''.join(c for c in str(x or '').lower() if c.isalnum())
+1896:    _model=_norm(a)+' '+_norm(p)
+1897:    _url=next((url for (maker,model),url in _known_products.items() if maker in _norm(m) and model in _model),None)
+1898:    if _url:
+1899:     st.caption('Automatisch erkannte offizielle Herstellerseite · Produktausführung prüfen')
+1900:     st.link_button('Erkannte Herstellerseite öffnen',_url)
+1901:    if any(x in str(m).lower() for x in ('trox','helios','danfoss')):
+1902:     import urllib.parse
+1903:     _domain=next((d for k,d in (('trox','trox.de'),('helios','heliosventilatoren.de'),('danfoss','danfoss.com')) if k in str(m).lower()),None)
+1904:     _term='site:'+_domain+' '+str(m)+' '+str(a or p)
+1905:     st.link_button('Offizielle Produktseite suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term))
+1906:     st.link_button('Hersteller-PDFs suchen','https://www.google.com/search?q='+urllib.parse.quote_plus(_term+' Datenblatt Montageanleitung PDF'))
+1907:    _linked_uploads=project_uploads_for_component(con,project,cid)
+1908:    if _linked_uploads:
+1909:     st.markdown('**Zugeordnete individuelle Projektunterlagen**')
