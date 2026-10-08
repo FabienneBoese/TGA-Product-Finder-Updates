@@ -27,14 +27,13 @@ jobs:
           helper="def kermi_basic_official_documents():\n import requests\n from bs4 import BeautifulSoup\n from urllib.parse import urljoin,urlparse\n page_url='https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/'\n session=requests.Session()\n session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/2.0)','Accept-Language':'de-DE,de;q=0.9'})\n response=session.get(page_url,timeout=18)\n response.raise_for_status()\n soup=BeautifulSoup(response.text,'html.parser')\n hits=[];seen=set()\n for a in soup.select('a[href]'):\n  href=a.get('href','');label=a.get_text(' ',strip=True)\n  url=urljoin(response.url,href)\n  parsed=urlparse(url)\n  host=(parsed.hostname or '').lower()\n  if not (host=='kermi.com' or host.endswith('.kermi.com')):continue\n  if '.pdf' not in parsed.path.lower():continue\n  if url in seen:continue\n  if not any(x in (label+' '+url).lower() for x in ('basic','montage','anleitung','heizkörper','heizkoerper','bedien','prospekt','datenblatt')):continue\n  try:\n   pdf=session.get(url,timeout=18,stream=True)\n   pdf.raise_for_status()\n   first=next(pdf.iter_content(chunk_size=4096),b'')\n   if not first.startswith(b'%PDF-'):continue\n   seen.add(url)\n   hits.append({'Kategorie':'Planung & Montage' if 'montage' in label.lower() or 'anleitung' in label.lower() else 'Produktdatenblatt','Titel':label or parsed.path.rsplit('/',1)[-1],'Treffer %':65,'URL':url,'Quellseite':page_url,'Relevant':False,'Priorität':'KERMI Produktfamilie Basic; genaue Ausführung prüfen'})\n  except requests.RequestException:continue\n return hits[:30]\n\n"
 
           s=s.replace(marker,helper+marker,1)
-          marker="if st.button('HELIOS-Dokumente mit Versionsprüfung suchen'"
-          if marker in s:
-           pass
           marker="if 'helios' in str(m).lower() and 'sb125a'"
-          assert s.count(marker)==1
-          block="if 'kermi' in str(m).lower() and 'basic' in str(p+' '+a).lower():\n   st.caption('KERMI Basic-E: offizielle Basic-50-Familienseite; die exakte elektrische Variante muss fachlich bestätigt werden.')\n   if st.button('KERMI-Dokumente direkt beim Hersteller prüfen',key=f'kermi_direct_{cid}'):\n    try:\n     _khits=kermi_basic_official_documents()\n     st.session_state[f'universal-hits-{cid}']=_khits\n     st.session_state[f'universal-source-{cid}']='KERMI Basic-50 Herstellerseite'\n     if _khits:st.success(str(len(_khits))+' verifizierte offizielle KERMI-PDF-Kandidaten gefunden. Fachliche Prüfung erforderlich.')\n     else:st.warning('Auf der KERMI-Familienseite keine direkt abrufbaren PDF-Links erkannt. Keine falschen Dokumente zugeordnet.')\n    except Exception as exc:\n     st.warning('KERMI-Herstellerseite derzeit nicht auswertbar: '+str(exc)[:180])\n   st.caption('Die allgemeine PDF-Kandidatenliste und Offline-Speicherung befinden sich im Bereich Universelle Dokumentensuche.')\n   st.markdown('[Offizielle KERMI Basic-50 Produktfamilie](https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/)')\n   \n "
-
-          s=s.replace(marker,block+marker,1)
+          if s.count(marker)==1:
+           s=s.replace(marker,block+marker,1)
+          else:
+           marker="st.info('Für dieses Produkt die universelle Dokumentensuche oben verwenden."
+           assert marker in s
+           s=s.replace(marker,"st.info('Für KERMI Basic-E die offizielle Herstellerseite https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/ prüfen. Für PDF-Kandidaten die universelle Suche verwenden.'); # "+marker,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
           assert Path('/tmp/tga212/TGA_Updater.ps1').exists()
