@@ -1,0 +1,83 @@
+name: TGA Comprehensive Automated Audit
+on:
+  push:
+    paths:
+      - '.github/workflows/audit-app.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime and test dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check -q 'streamlit>=1.40,<2' 'pandas>=2,<3' 'openpyxl>=3,<4' 'requests>=2,<3' 'beautifulsoup4>=4,<5' 'pypdf>=5,<7' 'reportlab>=4,<5' 'pytest>=8,<10'
+      - name: Extract production release
+        run: |
+          mkdir -p /tmp/tga_audit
+          unzip -q TGA_Product_Finder_Update_v2.1.7.zip -d /tmp/tga_audit
+          python3 -m py_compile /tmp/tga_audit/app.py
+      - name: Audit real app and UI
+        run: |
+          python3 - <<'PY'
+          import os,ast,traceback
+          from pathlib import Path
+          from streamlit.testing.v1 import AppTest
+          os.environ['TGA_TEST_MODE']='1'
+          source=Path('/tmp/tga_audit/app.py').read_text(encoding='utf-8')
+          tree=ast.parse(source)
+          functions=[n.name for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
+          print('AUDIT: Python functions',len(functions))
+          for name in ['search_document_focused_web','multistage_document_candidates']:
+              assert functions.count(name)==1,(name,functions.count(name))
+          app=AppTest.from_file('/tmp/tga_audit/app.py',default_timeout=30).run()
+          assert not list(app.exception),[str(e.message) for e in app.exception]
+          print('PASS: Streamlit initial render')
+          for kind in ['button','selectbox','text_input','checkbox','radio','file_uploader','tabs']:
+              try:
+                  widgets=getattr(app,kind)
+                  print('UI',kind,len(widgets),[str(getattr(w,'label',''))[:70] for w in list(widgets)[:12]])
+              except (AttributeError,TypeError) as exc:print('UI',kind,'not enumerable',str(exc)[:90])
+          app.run()
+          assert not list(app.exception),[str(e.message) for e in app.exception]
+          print('PASS: Streamlit second rerun without exceptions')
+          PY
+      - name: PDF and XLSX roundtrip and offline dedup
+        run: |
+          python3 - <<'PY'
+          import ast,io,re,tempfile,hashlib
+          from pathlib import Path
+          from openpyxl import Workbook,load_workbook
+          from reportlab.pdfgen import canvas
+          from pypdf import PdfReader
+          source=Path('/tmp/tga_audit/app.py').read_text(encoding='utf-8')
+          tree=ast.parse(source)
+          fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
+          assign=next(n for n in ast.walk(fn) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='type_pattern' for t in n.targets))
+          pattern=re.compile(ast.literal_eval(assign.value.args[0]),re.I)
+          rows=[('Heizung','Badheizkoerper','KERMI','Basic-E'),('Lueftung','Brandschutzklappe','TROX','FK2-EU'),('Lueftung','Ventilator','HELIOS','SB 125 A'),('Heizung','Abschottung','ROCKWOOL','Conlit 150 U')]
+          with tempfile.TemporaryDirectory() as d:
+              folder=Path(d);wb=Workbook();ws=wb.active
+              ws.append(('Gewerk','Produkt','Hersteller','Modell'))
+              for row in rows:ws.append(row)
+              path=folder/'produkte.xlsx';wb.save(path)
+              assert list(load_workbook(path,read_only=True,data_only=True).active.values)[1:]==rows
+              def make_pdf(line):
+                  buf=io.BytesIO();c=canvas.Canvas(buf);c.drawString(30,740,line);c.save();return buf.getvalue()
+              cases=[('ERE10 AK3 / E0E10 AK3',{'ERE10 AK3','E0E10 AK3'}),('DIN EN 61008-1',set()),('TROX FK2-EU',set()),('HELIOS SB 125 A',set()),('ROCKWOOL Conlit 150 U',set())]
+              for line,expected in cases:
+                  data=make_pdf(line)
+                  text=' '.join(p.extract_text() or '' for p in PdfReader(io.BytesIO(data)).pages)
+                  found={' '.join(m.group().upper().split()) for m in pattern.finditer(text)}
+                  assert found==expected,(line,found)
+              pdf=make_pdf(cases[0][0]);key=hashlib.sha256(pdf).hexdigest()
+              dest=folder/'offline';dest.mkdir();index={}
+              for filename in ['first.pdf','duplicate.pdf']:
+                  if key not in index:
+                      target=dest/filename;target.write_bytes(pdf);index[key]=target
+              assert len(list(dest.iterdir()))==1
+          print('PASS: XLSX/PDF roundtrip, model pattern, dedup fixture')
+          PY
