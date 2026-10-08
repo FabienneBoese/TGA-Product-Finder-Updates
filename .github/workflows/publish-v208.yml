@@ -28,7 +28,9 @@ jobs:
           block=s[a:b]
           anchor=" if 'rockwool' in maker and re.fullmatch"
           assert anchor in block
-          extra=""" if 'lunos' in maker and normalized in ('3/UP','V-EC'):
+          extra=""" if re.fullmatch(r"\\d{3}(?:\\.\\d{2,3}){2,3}",normalized):
+            return ("",raw,"article")
+           if 'lunos' in maker and normalized in ('3/UP','V-EC'):
             return (normalized,'','type')
            if 'trox' in maker and normalized=='LVS':
             return (normalized,'','type')
