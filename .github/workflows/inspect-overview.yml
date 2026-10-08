@@ -16,18 +16,18 @@ jobs:
           import zipfile
           z=zipfile.ZipFile('TGA_Product_Finder_Update_v2.1.8.zip')
           s=z.read('app.py').decode('utf-8').splitlines()
-          terms=['Projekt-Dokumentationsübersicht','Verbaute Komponenten','Online-Nachweise','Bestätigung nötig','Produktbezeichnung']
+          terms=['CREATE TABLE IF NOT EXISTS components','INSERT INTO components','SELECT id,manufacturer,product','rows=con.execute','def import','article_no','def init_db']
           hits=[]
           for i,line in enumerate(s):
               if any(t in line for t in terms):
                   a=max(0,i-24);b=min(len(s),i+36)
                   hits.append((i+1,'\n'.join(f'{j+1}: {s[j]}' for j in range(a,b))))
-          report='\n\n'.join('MATCH LINE '+str(i)+'\n'+block for i,block in hits[:24])
-          open('overview_source_audit.txt','w',encoding='utf-8').write(report[:180000])
+          report='\n\n'.join('MATCH LINE '+str(i)+'\n'+block for i,block in hits[:36])
+          open('component_source_audit.txt','w',encoding='utf-8').write(report[:240000])
           print('Matches',len(hits))
           PY
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add overview_source_audit.txt
+          git add component_source_audit.txt
           git commit -m 'Inspect overview rendering source'
           git push origin HEAD:main
