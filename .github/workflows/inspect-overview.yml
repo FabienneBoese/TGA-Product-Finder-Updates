@@ -28,6 +28,6 @@ jobs:
           PY
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add component_source_audit.txt
+          git add identifier_source_audit.txt
           git commit -m 'Inspect overview rendering source'
           git push origin HEAD:main
