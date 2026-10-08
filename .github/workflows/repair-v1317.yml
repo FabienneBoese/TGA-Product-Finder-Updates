@@ -15,41 +15,13 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/tga159
           unzip -q TGA_Product_Finder_Update_v1.5.8.zip -d /tmp/tga159
-          python3 - <<'PY'
-          from pathlib import Path
-          import json,py_compile
-          p=Path('/tmp/tga159/app.py');s=p.read_text()
-          s=s.replace('APP_VERSION = "1.5.8"','APP_VERSION = "1.5.9"',1).replace('persistent_update_install_v158','persistent_update_install_v159',1)
-          a=s.index('   _previous=previous_verified_product_documents(con,m,p,a,project)')
-          b=s.index('   manufacturer_product_name,name_confirmed=',a)
-          s=s[:a]+s[b:]
-          a=s.index(" if 'trox' in clean(m).lower():",s.index('   _search_product=search_product_for_component(m,p,a)'))
-          b=s.index('   auto=(product_key(m,_search_product)',a)
-          block=s[a:b]
-          block=''.join('  '+line if line.strip() else line for line in block.splitlines(keepends=True))
-          s=s[:a]+block+s[b:]
-          assert "   if 'trox' in clean(m).lower():" in s
-          assert "   auto=(product_key(m,_search_product)" in s
-          assert '   if auto:' in s
-          p.write_text(s);py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga159/version.json').write_text(json.dumps({'version':'1.5.9'}))
-          print('PASS component search controls now within expander')
-          PY
+          unzip -p TGA_Product_Finder_Update_v1.5.9.zip app.py > app_v159_reference.py
+          python3 -m py_compile app_v159_reference.py
+
           (cd /tmp/tga159 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.5.9.zip" app.py version.json TGA_Updater.ps1)
           unzip -t TGA_Product_Finder_Update_v1.5.9.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.5.9.zip
-          git commit -m 'Build v1.5.9 restore controls'
-          git push
-          PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.5.9.zip | awk '{print $1}')
-          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
-          import json,sys
-          sha,commit=sys.argv[1:]
-          data={'version':'1.5.9','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.5.9.zip','sha256':sha}
-          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
-          PY
-          git add update_manifest.json
-          git commit -m 'Publish v1.5.9 manifest'
+          git add app_v159_reference.py
+          git commit -m 'Extract v1.5.9 source for variant checks'
           git push
