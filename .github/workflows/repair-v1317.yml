@@ -1,4 +1,4 @@
-name: Publish v1.7.0 universal document pilot
+name: Publish v1.7.1 precise universal candidates
 on:
   push:
     paths:
@@ -13,42 +13,41 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga170
-          unzip -q TGA_Product_Finder_Update_v1.6.2.zip -d /tmp/tga170
+          mkdir -p /tmp/tga171
+          unzip -q TGA_Product_Finder_Update_v1.7.0.zip -d /tmp/tga171
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga170/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.6.2"')==1
-          s=s.replace('APP_VERSION = "1.6.2"','APP_VERSION = "1.7.0"',1).replace('persistent_update_install_v162','persistent_update_install_v170',1)
-          fn="def universal_docs_from_official_page(manufacturer,product,model,page_url):\n \"\"\"Conservative manufacturer-neutral PDF candidates; never auto approve.\"\"\"\n from urllib.parse import urlparse,urljoin\n from bs4 import BeautifulSoup\n import requests,re\n url=clean(page_url)\n u=urlparse(url)\n if u.scheme!='https' or not u.hostname or u.username or u.password: raise ValueError('Bitte eine gültige HTTPS-Herstellerseite angeben.')\n host=u.hostname.lower()\n if host in ('localhost',) or host.endswith(('.local','.internal')) or re.match(r'^\\d+\\.\\d+\\.\\d+\\.\\d+$',host): raise ValueError('Keine lokalen oder IP-Adressen erlaubt.')\n r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=20,allow_redirects=True)\n r.raise_for_status()\n final=urlparse(r.url)\n if final.scheme!='https' or not final.hostname or not (final.hostname==host or final.hostname.endswith('.'+host) or host.endswith('.'+final.hostname)): raise ValueError('Weiterleitung auf eine andere Domain: bitte Herstellerseite prüfen.')\n soup=BeautifulSoup(r.text,'html.parser')\n tokens=[x for x in re.split(r'[^a-z0-9]+',clean(model).lower()) if len(x)>=4]\n tokens+= [x for x in re.split(r'[^a-z0-9]+',clean(product).lower()) if len(x)>=4]\n tokens=list(dict.fromkeys(tokens))\n out=[];seen=set()\n for link in soup.find_all('a',href=True):\n  href=urljoin(r.url,link['href'])\n  dest=urlparse(href)\n  if dest.scheme!='https' or not dest.hostname or not (dest.hostname==final.hostname or dest.hostname.endswith('.'+final.hostname)): continue\n  title=clean(link.get_text(' ',strip=True))\n  blob=(title+' '+href).lower()\n  if not any(x in blob for x in ('.pdf','datenblatt','datasheet','montage','installation','zulassung','epd','leistungserklärung','declaration-of-performance','download')):continue\n  if href in seen:continue\n  seen.add(href)\n  cat=classify(title,href,'generic')\n  if cat=='Sonstiges':continue\n  match=any(x in blob for x in tokens) if tokens else False\n  pdf='.pdf' in dest.path.lower()\n  confidence=80 if match and pdf else 65 if match else 40\n  out.append({'Kategorie':cat,'Priorität':'Anwendungsfall prüfen','Titel':title or dest.path.rsplit('/',1)[-1],'Treffer %':confidence,'URL':href,'Quellseite':r.url,'Relevant':False,'Resolver':'Universeller Kandidat – manuell prüfen','Downloadbar':pdf,'Nachweis URL':''})\n  if len(out)>=60:break\n return r.url,out\n\n"
-          ui="   if not auto:\n    st.markdown('**Universelle Dokumentensuche – Pilotbetrieb**')\n    st.caption('Für noch nicht unterstützte Hersteller: Offizielle Produktseite eintragen. Gefundene Dokumente werden als ungeprüfte Kandidaten angezeigt, nicht freigegeben.')\n    _official=st.text_input('HTTPS-Adresse der offiziellen Hersteller-Produktseite',key=f'universal-url-{cid}',placeholder='https://www.hersteller.de/produkt/...')\n    if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):\n     try:\n      _source,_hits=universal_docs_from_official_page(m,p,a,_official)\n      st.session_state[f'universal-hits-{cid}']=_hits\n      st.session_state[f'universal-source-{cid}']=_source\n     except Exception as _error:st.error(str(_error))\n    _hits=st.session_state.get(f'universal-hits-{cid}',[])\n    if _hits:\n     st.warning(f'{len(_hits)} Dokumentkandidaten gefunden. Keine automatische Zuordnung oder Freigabe.')\n     st.dataframe(pd.DataFrame(_hits)[['Kategorie','Titel','Treffer %','URL']],hide_index=True,width='stretch')\n     st.caption('Trefferqualität ist eine Suchheuristik, keine bestätigte Produktzugehörigkeit. Diese Pilot-Suche speichert keine Kandidaten in die freigegebene Dokumentenmappe.')\n"
-          assert s.count('def find_docs(manufacturer,product):')==1
-          s=s.replace('def find_docs(manufacturer,product):',fn+'def find_docs(manufacturer,product):',1)
-          anchor="   auto=(product_key(m,_search_product) in PRODUCTS and conlit_name_ok) or (is_grohe_eurosmart_ce(m,p) and a in GROHE_VARIANTS) or is_geberit_verified(m,a) or is_geberit_mapress_therm(m,p)\n"
+          p=Path('/tmp/tga171/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.7.0"')==1
+          s=s.replace('APP_VERSION = "1.7.0"','APP_VERSION = "1.7.1"',1).replace('persistent_update_install_v170','persistent_update_install_v171',1)
+          start=s.index('def universal_docs_from_official_page(')
+          end=s.index('def find_docs(manufacturer,product):',start)
+          s=s[:start]+"def universal_docs_from_official_page(manufacturer,product,model,page_url):\n \"\"\"Find document candidates with explicit product evidence; do not approve.\"\"\"\n from urllib.parse import urlparse,urljoin\n from bs4 import BeautifulSoup\n import requests,re,ipaddress,socket\n def safe_url(url,allowed_host=None):\n  u=urlparse(url)\n  if u.scheme!='https' or not u.hostname or u.username or u.password: raise ValueError('Nur gültige HTTPS-Herstellerseiten sind zulässig.')\n  host=u.hostname.lower().rstrip('.')\n  if allowed_host and not (host==allowed_host or host.endswith('.'+allowed_host)):raise ValueError('Link außerhalb der Herstellerdomain.')\n  if host=='localhost' or host.endswith(('.local','.internal','.localhost')):raise ValueError('Lokale Adressen sind nicht erlaubt.')\n  try:\n   for item in socket.getaddrinfo(host,443,type=socket.SOCK_STREAM):\n    ip=ipaddress.ip_address(item[4][0])\n    if not ip.is_global:raise ValueError('Nichtöffentliche Netzwerkadresse ist nicht erlaubt.')\n  except socket.gaierror:raise ValueError('Herstellerdomain nicht erreichbar.')\n  return host\n url=clean(page_url)\n root=safe_url(url)\n session=requests.Session()\n session.headers.update({'User-Agent':'Mozilla/5.0 (compatible; TGA-Product-Finder/1.7.1)'})\n def get_page(url):\n  response=session.get(url,timeout=18,allow_redirects=False)\n  for _ in range(4):\n   if response.status_code not in (301,302,303,307,308):break\n   target=urljoin(response.url,response.headers.get('Location',''))\n   safe_url(target,root)\n   response=session.get(target,timeout=18,allow_redirects=False)\n  response.raise_for_status()\n  safe_url(response.url,root)\n  if 'text/html' not in response.headers.get('content-type','text/html').lower():raise ValueError('Keine HTML-Produktseite.')\n  return response\n first=get_page(url)\n model_text=clean(model).lower()\n product_text=clean(product).lower()\n model_keys=[t for t in re.split(r'[^a-z0-9]+',model_text) if len(t)>=4 and t not in ('montage','produkt','geraet','gerät')]\n product_keys=[t for t in re.split(r'[^a-z0-9]+',product_text) if len(t)>=4 and t not in ('montage','produkt','geraet','gerät','helios','ventilator','lueftung')]\n keys=list(dict.fromkeys(model_keys+product_keys))\n if not keys:raise ValueError('Keine ausreichend konkrete Produkt- oder Modellkennung vorhanden.')\n seen_pages=set();seen_docs=set();queue=[(first.url,first.text,0)]\n out=[]\n while queue and len(seen_pages)<6:\n  current,html,depth=queue.pop(0)\n  if current in seen_pages:continue\n  seen_pages.add(current)\n  soup=BeautifulSoup(html,'html.parser')\n  for link in soup.find_all('a',href=True):\n   href=urljoin(current,link['href'])\n   try:safe_url(href,root)\n   except ValueError:continue\n   if href in seen_docs:continue\n   title=clean(link.get_text(' ',strip=True))\n   context=clean(link.parent.get_text(' ',strip=True))[:220] if link.parent else ''\n   blob=(title+' '+href).lower()\n   category=classify(title,href,'generic')\n   pdf=urlparse(href).path.lower().endswith('.pdf')\n   # A general download directory, KWL guide, or overview is not a product document.\n   if pdf and category!='Sonstiges':\n    evidence=[k for k in keys if k in blob]\n    if not evidence:continue\n    seen_docs.add(href)\n    out.append({'Kategorie':category,'Priorität':'Anwendungsfall prüfen','Titel':title or href.rsplit('/',1)[-1],'Treffer %':85 if len(evidence)>1 else 70,'URL':href,'Quellseite':current,'Relevant':False,'Resolver':'PDF-Kandidat mit Modellbezug – manuell prüfen','Downloadbar':True,'Nachweis URL':''})\n   elif depth<1 and len(queue)<15 and category!='Sonstiges' and any(x in (blob+' '+context) for x in ('download','datenblatt','montage','anleitung','dokument')):\n    if href not in seen_pages and href!=current and not href.lower().endswith('.pdf'):\n     try:\n      sub=get_page(href)\n      queue.append((sub.url,sub.text,depth+1))\n     except (requests.RequestException,ValueError):pass\n   if len(out)>=40:break\n  if len(out)>=40:break\n return first.url,out\n\n"+s[end:]
+          anchor="    _hits=st.session_state.get(f'universal-hits-{cid}',[])\n"
           assert s.count(anchor)==1
-          s=s.replace(anchor,anchor+ui,1)
-          assert s.count('**Universelle Dokumentensuche – Pilotbetrieb**')==1
+          s=s.replace(anchor,anchor+"    if not _hits and st.session_state.get(f'universal-source-{cid}'):\n     st.info('Keine eindeutig produktbezogenen PDF-Kandidaten gefunden. Allgemeine Downloadbereiche und Handbücher werden nicht mehr als Produktdokumente bewertet.')\n",1)
+          s=s.replace("st.caption('Trefferqualität ist eine Suchheuristik, keine bestätigte Produktzugehörigkeit. Diese Pilot-Suche speichert keine Kandidaten in die freigegebene Dokumentenmappe.')","st.caption('Nur direkte PDF-Links mit Modellbezug. Die Prozentzahl ist eine Suchheuristik, keine fachliche Freigabe.')")
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga170/version.json').write_text(json.dumps({'version':'1.7.0'})+'\n',encoding='utf-8')
-          print('PASS generic pilot available for unsupported products; candidates never auto-approved')
+          Path('/tmp/tga171/version.json').write_text(json.dumps({'version':'1.7.1'})+'\n',encoding='utf-8')
+          print('PASS: only model-linked PDFs, directory pages excluded, no auto approval')
           PY
-          (cd /tmp/tga170 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.0.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.7.0.zip
+          (cd /tmp/tga171 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.1.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.7.1.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.7.0.zip
-          git commit -m 'Build v1.7.0 universal document pilot'
+          git add TGA_Product_Finder_Update_v1.7.1.zip
+          git commit -m 'Build v1.7.1 precise document candidates'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.0.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.1.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.7.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.0.zip','sha256':sha}
+          data={'version':'1.7.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.1.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.7.0 manifest'
+          git commit -m 'Publish v1.7.1 manifest'
           git push
