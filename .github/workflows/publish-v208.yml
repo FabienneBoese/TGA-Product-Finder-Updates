@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.17 Offline Save
+name: Publish TGA Product Finder v2.0.18 Offline Save
 on:
   push:
     paths:
@@ -13,50 +13,70 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga217
-          unzip -q TGA_Product_Finder_Update_v2.0.16.zip -d /tmp/tga217
+          mkdir -p /tmp/tga218
+          unzip -q TGA_Product_Finder_Update_v2.0.17.zip -d /tmp/tga218
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga217/app.py')
+          p=Path('/tmp/tga218/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.16"')==1
-          s=s.replace('APP_VERSION = "2.0.16"','APP_VERSION = "2.0.17"',1)
-          from urllib.parse import urlparse
-          trusted_kermi="https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf"
-          original="u.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or u.hostname.lower().endswith('.heliosventilatoren.de')"
-          assert s.count(original)==1
-          s=s.replace(original,"("+original+" or url=="+repr(trusted_kermi)+")",1)
-          final_original="final.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or final.hostname.lower().endswith('.heliosventilatoren.de')"
-          assert s.count(final_original)==1
-          s=s.replace(final_original,"("+final_original+" or (url=="+repr(trusted_kermi)+" and response.url=="+repr(trusted_kermi)+"))",1)
-          assert s.count("Nur freigegebene offizielle Hersteller-PDF-Hosts zulässig.")==1
-          assert "KERMI-PDF jetzt offline speichern" in s
-          print('PASS: exact URL allowlist, redirect and KERMI UI checks')
+          assert s.count('APP_VERSION = "2.0.17"')==1
+          s=s.replace('APP_VERSION = "2.0.17"','APP_VERSION = "2.0.18"',1)
+          marker='def save_universal_pdf_candidate('
+          assert s.count(marker)==1
+          policy=[
+           'def document_source_policy(url, original_url=None):',
+           ' """Return source class and whether this exact PDF URL may be saved."""',
+           ' from urllib.parse import urlparse',
+           ' u=urlparse(url)',
+           ' if u.scheme != "https" or not u.hostname or u.username or u.password: return ("Unbekannte Quelle",False)',
+           ' host=u.hostname.lower()',
+           ' official=(host in ("heliosventilatoren.de","assets.danfoss.com") or host.endswith(".heliosventilatoren.de"))',
+           ' if official: return ("1 – Offizielle Herstellerquelle",True)',
+           ' kermi="https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf"',
+           ' if url==kermi and (original_url is None or original_url==kermi): return ("2 – Geprüfte Drittquelle (KERMI Basic-E AK3)",True)',
+           ' return ("3 – Unbekannte Quelle",False)',
+           '',
+          ]
+          s=s.replace(marker,'\n'.join(policy)+'\n'+marker,1)
+          old="u.hostname.lower() in ('heliosventilatoren.de','assets.danfoss.com') or u.hostname.lower().endswith('.heliosventilatoren.de') or url=='https://www.heizungsdiscount24.de/pdf/Kermi-Badheizkoerper-Basic-E-AK3-Montageanleitung.pdf'"
+          # Replace entire first and second host validation using line matching to retain safety.
+          lines=s.splitlines()
+          start=next(i for i,line in enumerate(lines) if line.startswith('def save_universal_pdf_candidate('))
+          first=next(i for i in range(start,start+22) if "raise ValueError('Nur freigegebene offizielle Hersteller-PDF-Hosts zulässig.')" in lines[i])
+          assert lines[first-1].lstrip().startswith('if u.scheme')
+          lines[first-1]=" if not document_source_policy(url)[1]:"
+          second=next(i for i in range(first+1,first+16) if "PDF-Weiterleitung außerhalb der Herstellerdomain." in lines[i])
+          assert lines[second-1].lstrip().startswith('if final.scheme')
+          lines[second-1]=" if not document_source_policy(response.url,url)[1]:"
+          s='\n'.join(lines)+'\n'
+          assert 'document_source_policy(response.url,url)' in s
+          assert 'KERMI-PDF jetzt offline speichern' in s
+          print('PASS: central three-tier policy, exact KERMI exception, redirect verification')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga217/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga218/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga217 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.17.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.17.zip
+          (cd /tmp/tga218 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.18.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.18.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.17.zip
-          git commit -m 'Build TGA Product Finder v2.0.17'
+          git add TGA_Product_Finder_Update_v2.0.18.zip
+          git commit -m 'Build TGA Product Finder v2.0.18'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.17.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.18.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.17','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.17.zip','sha256':sha}
+          data={'version':'2.0.18','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.18.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.17 update manifest'
+          git commit -m 'Publish v2.0.18 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
