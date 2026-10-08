@@ -24,16 +24,16 @@ jobs:
           marker='   if auto:\n'
           assert s.count(marker)>=1
           insert='''   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':
-            st.markdown('**Ausführungsprüfung – FKRS-EU**')
-            st.caption('Gemeinsame Herstellerunterlagen können für die Produktfamilie genutzt werden. Die Eignung für die konkret verbaute Ausführung muss separat nachgewiesen werden.')
-            _variant=clean(a).upper()
-            _overflow=('AA' in _variant.split('/') or 'Z43RM' in _variant or 'ÜBERSTRÖM' in clean(p).upper())
-            st.write(f'Verbaute Ausführung laut Excel: **{a or p}**')
-            if _overflow:
-             st.warning('Überström-Ausführung erkannt: Überströmfunktion, Zubehör AA/Z43RM, Einbausituation und zugehörige Verwendbarkeitsnachweise fachlich prüfen.')
-            else:
-             st.info('Standardausführung: Einbausituation, Antrieb/Zubehör und Gültigkeitsbereich von DoP, Montageanleitung und Nachweisen prüfen.')
-            st.caption('Status: Ausführungsnachweise fachlich offen. Heruntergeladene PDFs gelten nicht automatisch als freigegeben.')
+              st.markdown('**Ausführungsprüfung – FKRS-EU**')
+              st.caption('Gemeinsame Herstellerunterlagen können für die Produktfamilie genutzt werden. Die Eignung für die konkret verbaute Ausführung muss separat nachgewiesen werden.')
+              _variant=clean(a).upper()
+              _overflow=('AA' in _variant.split('/') or 'Z43RM' in _variant or 'ÜBERSTRÖM' in clean(p).upper())
+              st.write(f'Verbaute Ausführung laut Excel: **{a or p}**')
+              if _overflow:
+               st.warning('Überström-Ausführung erkannt: Überströmfunktion, Zubehör AA/Z43RM, Einbausituation und zugehörige Verwendbarkeitsnachweise fachlich prüfen.')
+              else:
+               st.info('Standardausführung: Einbausituation, Antrieb/Zubehör und Gültigkeitsbereich von DoP, Montageanleitung und Nachweisen prüfen.')
+              st.caption('Status: Ausführungsnachweise fachlich offen. Heruntergeladene PDFs gelten nicht automatisch als freigegeben.')
           '''
           s=s.replace(marker,insert+marker,1)
           assert s.count('**Ausführungsprüfung – FKRS-EU**')==1
