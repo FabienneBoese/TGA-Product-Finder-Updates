@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.23 Model Recognition
+name: Publish TGA Product Finder v2.0.24 Model Recognition
 on:
   push:
     paths:
@@ -13,57 +13,52 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga223
-          unzip -q TGA_Product_Finder_Update_v2.0.22.zip -d /tmp/tga223
+          mkdir -p /tmp/tga224
+          unzip -q TGA_Product_Finder_Update_v2.0.23.zip -d /tmp/tga224
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga223/app.py')
+          p=Path('/tmp/tga224/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.22"')==1
-          s=s.replace('APP_VERSION = "2.0.22"','APP_VERSION = "2.0.23"',1)
+          assert s.count('APP_VERSION = "2.0.23"')==1
+          s=s.replace('APP_VERSION = "2.0.23"','APP_VERSION = "2.0.24"',1)
           import ast
           marker='def multistage_document_candidates('
           assert s.count(marker)==1
           helper=[
-           'def scoped_official_document_search(manufacturer,product,model):',
-           ' """Follow only HTTPS product-related links on a verified official KERMI page."""',
-           ' import requests,re',
+           'def search_document_focused_web(manufacturer,product,model):',
+           ' """Search document-oriented phrases and return candidates, never automatic approvals."""',
+           ' import requests,re,html',
            ' from bs4 import BeautifulSoup',
-           ' from urllib.parse import urlparse,urljoin',
-           ' if "kermi" not in str(manufacturer).casefold(): return [],["Erweiterte Herstellersuche: Für diesen Hersteller noch nicht konfiguriert"]',
-           ' root="https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/"',
-           ' session=requests.Session();session.headers.update({"User-Agent":"Mozilla/5.0"})',
-           ' found=[];notes=[];seen=set();pages=[root]',
-           ' tokens=[x for x in re.split(r"[^a-z0-9]+",(str(product)+" "+str(model)).lower()) if len(x)>3]',
-           ' try:',
-           '  response=session.get(root,timeout=15);response.raise_for_status()',
-           '  soup=BeautifulSoup(response.text,"html.parser")',
-           '  for anchor in soup.select("a[href]"):',
-           '   url=urljoin(response.url,anchor.get("href",""));u=urlparse(url)',
-           '   if u.scheme!="https" or not u.hostname or not (u.hostname=="kermi.com" or u.hostname.endswith(".kermi.com")):continue',
-           '   label=(anchor.get_text(" ",strip=True)+" "+url).lower()',
-           '   if tokens and not any(t in label for t in tokens):continue',
-           '   if u.path.lower().endswith(".pdf"):',
-           '    if url not in seen:',
-           '     seen.add(url);found.append({"Kategorie":"Sonstiges","Titel":anchor.get_text(" ",strip=True) or u.path.rsplit("/",1)[-1],"Treffer %":55,"URL":url,"Quellseite":root,"Relevant":False,"Priorität":"Offizielle Quelle; Produktvariante prüfen"})',
-           '   elif len(pages)<5 and url not in pages and url.rstrip("/")!=root.rstrip("/"):pages.append(url)',
-           '  notes.append("KERMI: "+str(len(pages))+" thematisch passende offizielle Seiten identifiziert")',
-           '  for page in pages[1:]:',
-           '   try:',
-           '    res=session.get(page,timeout=12,allow_redirects=False)',
-           '    if res.status_code!=200 or "text/html" not in res.headers.get("content-type","").lower():continue',
-           '    soup2=BeautifulSoup(res.text,"html.parser")',
-           '    for anchor in soup2.select("a[href]"):',
-           '     url=urljoin(page,anchor.get("href",""));u=urlparse(url)',
-           '     if u.scheme!="https" or not u.hostname or not (u.hostname=="kermi.com" or u.hostname.endswith(".kermi.com")) or not u.path.lower().endswith(".pdf") or url in seen:continue',
-           '     label=(anchor.get_text(" ",strip=True)+" "+url).lower()',
-           '     if tokens and not any(t in label for t in tokens):continue',
-           '     seen.add(url);found.append({"Kategorie":"Sonstiges","Titel":anchor.get_text(" ",strip=True) or u.path.rsplit("/",1)[-1],"Treffer %":55,"URL":url,"Quellseite":page,"Relevant":False,"Priorität":"Offizielle Quelle; Produktvariante prüfen"})',
-           '   except requests.RequestException as exc:notes.append("Unterseite nicht erreichbar: "+str(exc)[:90])',
-           ' except requests.RequestException as exc:notes.append("KERMI-Herstellerseite nicht erreichbar: "+str(exc)[:110])',
-           ' notes.append("KERMI: "+str(len(found))+" zusätzliche PDF-Links (nicht fachlich freigegeben)")',
-           ' return found,notes',
+           ' from urllib.parse import urlparse,parse_qs,unquote',
+           ' patterns=universal_product_search_patterns(manufacturer,product,model)',
+           ' phrases=[p for p in patterns if p["Suchmuster"] in ("Datenblatt","Montageanleitung","Leistungserklärung","Zulassung","EPD")]',
+           ' notes=[];candidates=[];seen=set()',
+           ' for pattern in phrases:',
+           '  term=pattern["Suchbegriff"]',
+           '  try:',
+           '   response=requests.get("https://www.google.com/search",params={"q":term+" filetype:pdf","num":"8"},timeout=12,headers={"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
+           '   response.raise_for_status()',
+           '   soup=BeautifulSoup(response.text,"html.parser")',
+           '   count=0',
+           '   for anchor in soup.select("a[href]"):',
+           '    link=html.unescape(anchor.get("href",""))',
+           '    if link.startswith("/url?"):link=parse_qs(urlparse(link).query).get("q",[""])[0]',
+           '    parsed=urlparse(link)',
+           '    if parsed.scheme!="https" or not parsed.hostname or not parsed.path.lower().endswith(".pdf"):continue',
+           '    if parsed.hostname.lower().endswith("google.com"):continue',
+           '    title=anchor.get_text(" ",strip=True) or parsed.path.rsplit("/",1)[-1]',
+           '    context=(title+" "+unquote(parsed.path)).casefold()',
+           '    name=str(manufacturer).casefold().strip(); identity=str(model).casefold().strip()',
+           '    if not name or name not in context or not identity or identity not in context:continue',
+           '    if link in seen:continue',
+           '    seen.add(link);count+=1',
+           '    category={"Datenblatt":"Produktdatenblatt","Montageanleitung":"Montage & Betrieb – Hauptanleitung","Leistungserklärung":"Leistungserklärung (DoP)","Zulassung":"Zulassung/Prüfzeugnis","EPD":"EPD/DGNB/Umwelt"}[pattern["Suchmuster"]]',
+           '    candidates.append({"Kategorie":category,"Titel":title,"Treffer %":60,"URL":link,"Quellseite":"https://www.google.com/search?q="+requests.utils.quote(term),"Relevant":False,"Priorität":"Ungeprüfte Suchquelle; URL und Ausführung prüfen"})',
+           '    if count>=5:break',
+           '   notes.append(pattern["Suchmuster"]+": "+str(count)+" PDF-Kandidat(en) aus Websuche")',
+           '  except requests.RequestException as exc:notes.append(pattern["Suchmuster"]+": Websuche nicht erreichbar ("+str(exc)[:85]+")")',
+           ' return candidates,notes',
            '',
           ]
           s=s.replace(marker,'\n'.join(helper)+'\n'+marker,1)
@@ -74,39 +69,39 @@ jobs:
           assert block.count(needle)==1
           addition=[
            ' try:',
-           '  extra,notes=scoped_official_document_search(manufacturer,product,model)',
+           '  extra,notes=search_document_focused_web(manufacturer,product,model)',
            '  merge(extra);stages.extend(notes)',
-           ' except Exception as exc:stages.append("Erweiterte Herstellersuche: "+str(exc)[:110])',
+           ' except Exception as exc:stages.append("Dokumentenorientierte Websuche: "+str(exc)[:110])',
           ]
           block=block.replace(needle,'\n'.join(addition)+'\n'+needle,1)
           s=s[:start]+block+s[end:]
           ast.parse(s)
-          assert 'scoped_official_document_search(manufacturer,product,model)' in s
-          print('PASS: bounded manufacturer-domain discovery, product-related PDF candidates, detailed search log')
+          assert 'search_document_focused_web(manufacturer,product,model)' in s
+          print('PASS: five document-specific web queries, model/manufacturer filtering, search logging, no auto approval')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga223/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga224/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga223 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.23.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.23.zip
+          (cd /tmp/tga224 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.24.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.24.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.23.zip
-          git commit -m 'Build TGA Product Finder v2.0.23'
+          git add TGA_Product_Finder_Update_v2.0.24.zip
+          git commit -m 'Build TGA Product Finder v2.0.24'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.23.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.24.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.23','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.23.zip','sha256':sha}
+          data={'version':'2.0.24','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.24.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.23 update manifest'
+          git commit -m 'Publish v2.0.24 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
