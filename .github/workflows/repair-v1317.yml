@@ -1,4 +1,4 @@
-name: Publish v2.0.4 Helios Google search removal
+name: Publish v2.0.5 Helios Google search removal
 on:
   push:
     paths:
@@ -13,46 +13,44 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga204
-          unzip -q TGA_Product_Finder_Update_v2.0.3.zip -d /tmp/tga204
+          mkdir -p /tmp/tga205
+          unzip -q TGA_Product_Finder_Update_v2.0.3.zip -d /tmp/tga205
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga204/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.3"')==1
+          p=Path('/tmp/tga205/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.0.4"')==1
           s=s.replace('APP_VERSION = "2.0.3"','APP_VERSION = "2.0.4"',1)
-          s=s.replace('persistent_update_install_v203','persistent_update_install_v204',1)
-          anchor="   st.write(f'**Bewertung:** {stat}')"
-          assert s.count(anchor)==1
-          extra="\n   if 'helios' in str(m).lower() and 'sb125a' in ''.join(c for c in str(a or p).lower() if c.isalnum()):\n    st.caption('Helios SB 125 A – automatische Herstellersuche im bestehenden Produktbereich starten')\n    st.info('Bitte die bereits vorhandene automatische Herstellersuche für Helios verwenden. Die Google-PDF-Suche wurde entfernt.')"
-          s=s.replace(anchor,anchor+extra,1)
-          marker="    st.info('Bitte die bereits vorhandene automatische Herstellersuche für Helios verwenden. Die Google-PDF-Suche wurde entfernt.')"
-          replacement="    if st.button('Helios Herstellerseite automatisch auslesen',key=f'helios_extract_{cid}'):\n     import requests\n     from bs4 import BeautifulSoup\n     from urllib.parse import urljoin\n     _page='https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506'\n     try:\n      _response=requests.get(_page,timeout=20);_response.raise_for_status()\n      _soup=BeautifulSoup(_response.text,'html.parser')\n      _found=[]\n      for _a in _soup.select('a[href]'):\n       _href=urljoin(_page,_a['href'])\n       if '.pdf' in _href.lower() and _href not in _found:_found.append(_href)\n      st.session_state[f'helios_pdfs_{cid}']=_found[:30]\n     except Exception as _e:st.warning(str(_e))\n    for _pdf in st.session_state.get(f'helios_pdfs_{cid}',[]):st.link_button('PDF-Kandidat prüfen',_pdf)"
-          assert s.count(marker)==1
-          s=s.replace(marker,replacement,1)
-          print('PASS obsolete Google PDF search removed; existing automatic Helios document resolver retained')
+          s=s.replace('persistent_update_install_v204','persistent_update_install_v205',1)
+          old="    if st.button('Helios Herstellerseite automatisch auslesen',key=f'helios_extract_{cid}'):"
+          assert s.count(old)==1
+          s=s.replace(old,"    if st.button('Helios-Dokumente im bestehenden Suchbereich prüfen',key=f'helios_extract_{cid}'):",1)
+          start=s.index('     import requests',s.index('Helios-Dokumente im bestehenden Suchbereich prüfen'))
+          end=s.index('    for _pdf in st.session_state.get',start)
+          s=s[:start]+"     st.info('Helios blockiert den direkten Seitenabruf (HTTP 403). Bitte die vorhandene Herstellersuche und Offline-PDFs verwenden.')\n"+s[end:]
+          print('PASS: direct Helios scraper disabled, offline documents preserved')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga204/version.json').write_text(json.dumps({'version':'2.0.4'})+'\n')
+          Path('/tmp/tga205/version.json').write_text(json.dumps({'version':'2.0.4'})+'\n')
           print('PASS syntax: stronger project-document product recognition and status labels')
           
           PY
-          (cd /tmp/tga204 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.4.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.4.zip
+          (cd /tmp/tga205 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.5.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.5.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.4.zip
-          git commit -m 'Build v2.0.4 project linking'
+          git add TGA_Product_Finder_Update_v2.0.5.zip
+          git commit -m 'Build v2.0.5 project linking'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.4.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.5.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.3','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.4.zip','sha256':sha}
+          data={'version':'2.0.5','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.5.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.4 manifest'
+          git commit -m 'Publish v2.0.5 manifest'
           git pull --rebase origin main
           git push
