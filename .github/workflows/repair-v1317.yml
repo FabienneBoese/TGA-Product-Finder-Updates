@@ -1,4 +1,4 @@
-name: Publish v1.6.1 guided FKRS-EU checks
+name: Publish v1.6.2 conditional document checks
 on:
   push:
     paths:
@@ -13,40 +13,40 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga161
-          unzip -q TGA_Product_Finder_Update_v1.6.0.zip -d /tmp/tga161
+          mkdir -p /tmp/tga162
+          unzip -q TGA_Product_Finder_Update_v1.6.1.zip -d /tmp/tga162
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga161/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.6.0"')==1
-          s=s.replace('APP_VERSION = "1.6.0"','APP_VERSION = "1.6.1"',1).replace('persistent_update_install_v160','persistent_update_install_v161',1)
-          marker='   if auto:\n'
-          assert marker in s
-          insert="   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    st.markdown('**Geführte Ausführungsprüfung – FKRS-EU**')\n    st.caption('Projektbezogene Angaben; keine automatische bauaufsichtliche Freigabe.')\n    con.execute('CREATE TABLE IF NOT EXISTS variant_checks(component_id INTEGER PRIMARY KEY, model TEXT, installation TEXT, overflow TEXT, atex TEXT, special TEXT, evidence TEXT, note TEXT, updated_at TEXT)')\n    _saved=con.execute('SELECT model,installation,overflow,atex,special,evidence,note FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    _opts=['Noch nicht geprüft','Ja','Nein','Unklar']\n    _pick=lambda val: _opts.index(val) if val in _opts else 0\n    with st.form(key=f'fkrs-check-{cid}'):\n     st.write(f'**Verbaute Ausführung:** {a or p}')\n     _installation=st.selectbox('Einbausituation mit gültiger Montageanleitung abgeglichen?',_opts,index=_pick(_saved[1] if _saved else None))\n     _overflow=st.selectbox('Überströmfunktion / Zubehör für diese Ausführung geprüft?',_opts,index=_pick(_saved[2] if _saved else None))\n     _atex=st.selectbox('Explosionsgefährdeter Bereich (ATEX) vorhanden?',_opts,index=_pick(_saved[3] if _saved else None))\n     _special=st.selectbox('Montage-Sonderanwendung vorhanden?',_opts,index=_pick(_saved[4] if _saved else None))\n     _evidence=st.selectbox('Ausführungsspezifische Nachweise auf Geltungsbereich geprüft?',_opts,index=_pick(_saved[5] if _saved else None))\n     _note=st.text_area('Prüfvermerk / Fundstelle / verantwortliche Person',value=_saved[6] if _saved and _saved[6] else '',key=f'fkrs-note-{cid}')\n     _save=st.form_submit_button('Projektprüfung speichern')\n    if _save:\n     con.execute(\"INSERT OR REPLACE INTO variant_checks(component_id,model,installation,overflow,atex,special,evidence,note,updated_at) VALUES(?,?,?,?,?,?,?,?,datetime('now'))\",(cid,clean(a),_installation,_overflow,_atex,_special,_evidence,_note))\n     con.commit()\n     st.success('Projektprüfung gespeichert – keine automatische Freigabe.')\n    _state=con.execute('SELECT installation,overflow,atex,special,evidence FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    if not _state or any(x in ('Noch nicht geprüft','Unklar') for x in _state):\n     st.warning('Ausführungsprüfung offen: Angaben fehlen oder sind unklar.')\n    elif _state[2]=='Ja' or _state[3]=='Ja':\n     st.warning('ATEX bzw. Sondermontage angegeben: zusätzliche anwendungsspezifische Nachweise prüfen.')\n    else:\n     st.info('Angaben erfasst. Fachliche Dokumentenfreigabe weiterhin separat erforderlich.')\n"
-          s=s.replace(marker,insert+marker,1)
-          assert s.count('**Geführte Ausführungsprüfung – FKRS-EU**')==1
-          assert s.count("with st.form(key=f'fkrs-check-{cid}')")==1
+          p=Path('/tmp/tga162/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.6.1"')==1
+          s=s.replace('APP_VERSION = "1.6.1"','APP_VERSION = "1.6.2"',1).replace('persistent_update_install_v161','persistent_update_install_v162',1)
+          a=s.index("   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    st.markdown('**Geführte Ausführungsprüfung – FKRS-EU**')")
+          b=s.index('   if auto:\n',a)
+          new="   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    con.execute('CREATE TABLE IF NOT EXISTS variant_checks(component_id INTEGER PRIMARY KEY, model TEXT, installation TEXT, overflow TEXT, atex TEXT, special TEXT, evidence TEXT, note TEXT, updated_at TEXT)')\n    _saved=con.execute('SELECT model,installation,overflow,atex,special,evidence,note FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    _docs=con.execute('SELECT doc_type,title FROM documents WHERE component_id=?',(cid,)).fetchall()\n    _has_atex=any('ATEX' in (str(k)+' '+str(t)).upper() for k,t in _docs)\n    _has_special=any('SONDERANWENDUNG' in str(k).upper() or '_SV_IOM_' in str(t).upper() for k,t in _docs)\n    _variant=clean(a).upper()\n    _has_overflow=('AA' in _variant.split('/') or 'Z43RM' in _variant or 'ÜBERSTRÖM' in clean(p).upper())\n    _opts=['Noch nicht geprüft','Ja','Nein','Unklar']\n    _pick=lambda val: _opts.index(val) if val in _opts else 0\n    if _has_atex or _has_special or _has_overflow:\n     st.markdown('**Dokumentbezogene Projektprüfungen – FKRS-EU**')\n     st.caption('Nur für gefundene Zusatzdokumente oder die erkannte Sonderausführung. Standarddokumente bleiben unverändert.')\n     with st.form(key=f'fkrs-check-{cid}'):\n      if _has_atex:\n       st.write('**ATEX-Dokumente:** '+', '.join(str(t) for k,t in _docs if 'ATEX' in (str(k)+' '+str(t)).upper())[:300])\n       _atex=st.selectbox('ATEX-Anwendung für diese Komponente vorhanden?',_opts,index=_pick(_saved[3] if _saved else None))\n      else:\n       _atex=_saved[3] if _saved else 'Noch nicht geprüft'\n      if _has_special:\n       st.write('**Montage-Sonderanwendung:** '+', '.join(str(t) for k,t in _docs if 'SONDERANWENDUNG' in str(k).upper() or '_SV_IOM_' in str(t).upper())[:300])\n       _special=st.selectbox('Sondermontage bei dieser Komponente vorhanden?',_opts,index=_pick(_saved[4] if _saved else None))\n      else:\n       _special=_saved[4] if _saved else 'Noch nicht geprüft'\n      if _has_overflow:\n       st.warning('Ausführung AA/Z43RM: Überströmfunktion und Zubehör benötigen eine gesonderte Eignungsprüfung.')\n       _overflow=st.selectbox('Überströmfunktion und Zubehör für diese Ausführung nachgewiesen?',_opts,index=_pick(_saved[2] if _saved else None))\n      else:\n       _overflow=_saved[2] if _saved else 'Noch nicht geprüft'\n      _note=st.text_area('Prüfvermerk / Nachweisquelle (optional)',value=_saved[6] if _saved and _saved[6] else '',key=f'fkrs-note-{cid}')\n      _save=st.form_submit_button('Dokumentenprüfung speichern')\n     if _save:\n      con.execute(\"INSERT OR REPLACE INTO variant_checks(component_id,model,installation,overflow,atex,special,evidence,note,updated_at) VALUES(?,?,?,?,?,?,?,?,datetime('now'))\",(cid,clean(a),_saved[1] if _saved else 'Noch nicht geprüft',_overflow,_atex,_special,_saved[5] if _saved else 'Noch nicht geprüft',_note))\n      con.commit()\n      st.success('Projektbezogene Entscheidungen gespeichert – keine automatische Freigabe.')\n     _current=con.execute('SELECT overflow,atex,special FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n     if _current:\n      if _has_atex and _current[1]=='Nein': st.info('ATEX: Für dieses Projekt als nicht erforderlich angegeben; Herstellerunterlagen bleiben erhalten.')\n      if _has_special and _current[2]=='Nein': st.info('Sondermontage: Für dieses Projekt als nicht erforderlich angegeben.')\n      if _has_overflow and _current[0]!='Ja': st.warning('Überström-Ausführung: Eignungsnachweis weiterhin offen.')\n     else:\n      st.caption('Zusatzprüfungen noch nicht beantwortet.')\n    else:\n     st.caption('Keine zusätzlichen dokumentbezogenen Projektfragen erforderlich.')\n"
+          s=s[:a]+new+s[b:]
+          assert 'Geführte Ausführungsprüfung – FKRS-EU' not in s
+          assert s.count('**Dokumentbezogene Projektprüfungen – FKRS-EU**')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga161/version.json').write_text(json.dumps({'version':'1.6.1'})+'\n',encoding='utf-8')
-          print('PASS guided project checks; per-component SQLite persistence; no auto approval')
+          Path('/tmp/tga162/version.json').write_text(json.dumps({'version':'1.6.2'})+'\n',encoding='utf-8')
+          print('PASS conditional questions by stored documents and AA/Z43RM; no automatic approval')
           PY
-          (cd /tmp/tga161 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.6.1.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.6.1.zip
+          (cd /tmp/tga162 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.6.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.6.2.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.6.1.zip
-          git commit -m 'Build v1.6.1 guided checks'
+          git add TGA_Product_Finder_Update_v1.6.2.zip
+          git commit -m 'Build v1.6.2 conditional document checks'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.6.1.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.6.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.6.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.6.1.zip','sha256':sha}
+          data={'version':'1.6.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.6.2.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.6.1 manifest'
+          git commit -m 'Publish v1.6.2 manifest'
           git push
