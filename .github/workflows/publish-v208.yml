@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.1.9 Model Recognition
+name: Publish TGA Product Finder v2.2.0 Model Recognition
 on:
   push:
     paths:
@@ -13,15 +13,15 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga219
-          unzip -q TGA_Product_Finder_Update_v2.1.8.zip -d /tmp/tga219
+          mkdir -p /tmp/tga220
+          unzip -q TGA_Product_Finder_Update_v2.1.9.zip -d /tmp/tga220
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga219/app.py')
+          p=Path('/tmp/tga220/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.1.8"')==1
-          s=s.replace('APP_VERSION = "2.1.8"','APP_VERSION = "2.1.9"',1)
+          assert s.count('APP_VERSION = "2.1.9"')==1
+          s=s.replace('APP_VERSION = "2.1.9"','APP_VERSION = "2.2.0"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
@@ -281,11 +281,27 @@ jobs:
           assert "Verbaute Komponenten" not in new_line
           assert "docstatus.split()[0]" in s
           print('PASS: Statusampel kompakt und Spalte Verbaute Komponenten ausgeblendet')
+          # Keine riskante automatische Umdeutung alter Artikelnummern:
+          # Typ/Modell ist eine eigene persistente Information.
+          schema_anchor="  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT \"\"')"
+          assert s.count(schema_anchor)==1
+          s=s.replace(schema_anchor,schema_anchor+"\n  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT \"\"')",1)
+          # Explizit bestaetigte Herstellerbezeichnung vorziehen, sonst Original beibehalten.
+          old="    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bauteil':op,'Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
+          new="    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()\n    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op\n    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
+          assert s.count(old)==1
+          s=s.replace(old,new,1)
+          # Typenfeld im Produktbereich bearbeitbar; Originalbezeichnung und Artikelnummer unveraendert.
+          target="   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):"
+          assert s.count(target)==1
+          replacement=target+"\n    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''\n    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}',help='Nur den konkreten Herstellertyp eintragen; die Artikelnummer bleibt unverändert.')\n    if _new_model.strip()!=_current_model.strip():\n     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):\n      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()"
+          s=s.replace(target,replacement,1)
+          print('PASS: separate persistente Modellspalte, bestaetigte Bezeichnung und manuelle Typkorrektur')
           ast.parse(s)
           print('PASS: structured technical type extraction and unverified family separation')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga219/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga220/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           # Pflichtpruefungen: Freigabe nur bei erfolgreichen Regressionstests.
           import re, zipfile
@@ -317,7 +333,7 @@ jobs:
           from pypdf import PdfReader
           import ast,re
           from pathlib import Path
-          code=Path('/tmp/tga219/app.py').read_text(encoding='utf-8')
+          code=Path('/tmp/tga220/app.py').read_text(encoding='utf-8')
           tree=ast.parse(code)
           fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
           pattern_node=next(n for n in ast.walk(fn) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='type_pattern' for t in n.targets))
@@ -358,7 +374,7 @@ jobs:
           from openpyxl import Workbook,load_workbook
           from reportlab.pdfgen import canvas
           from pypdf import PdfReader
-          app=Path('/tmp/tga219/app.py').read_text(encoding='utf-8')
+          app=Path('/tmp/tga220/app.py').read_text(encoding='utf-8')
           tree=ast.parse(app)
           function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
           assignment=next(n for n in ast.walk(function) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='type_pattern' for t in n.targets))
@@ -409,7 +425,7 @@ jobs:
           from io import BytesIO
           from reportlab.pdfgen import canvas
           from pypdf import PdfReader
-          source=Path('/tmp/tga219/app.py').read_text(encoding='utf-8')
+          source=Path('/tmp/tga220/app.py').read_text(encoding='utf-8')
           function=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
           assignments=[n for n in ast.walk(function) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='type_pattern' for t in n.targets)]
           assert len(assignments)==1
@@ -431,7 +447,7 @@ jobs:
           # Regression fuer KERMI Basic-E gegen Basic 50 und Schreibvarianten
           import ast,re
           from pathlib import Path
-          s=Path('/tmp/tga219/app.py').read_text(encoding='utf-8')
+          s=Path('/tmp/tga220/app.py').read_text(encoding='utf-8')
           f=next(n for n in ast.parse(s).body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
           expr=next(n.value for n in f.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='basic_e' for t in n.targets))
           for product in ['Basic-E','Basic E','Basic–E','Basic—E','Basic‐E','BASIC E']:
@@ -445,7 +461,7 @@ jobs:
           # Streamlit-Starttest: Server muss mit dem echten app.py hochfahren.
           python3 -m pip install -q --disable-pip-version-check 'streamlit>=1.40,<2' 'beautifulsoup4>=4,<5' 'requests>=2,<3' 'pandas>=2,<3' 'openpyxl>=3,<4' 'pypdf>=5,<7'
           set +e
-          timeout 35s python3 -m streamlit run /tmp/tga219/app.py --server.headless=true --server.address=127.0.0.1 --server.port=18501 --browser.gatherUsageStats=false >/tmp/tga219/streamlit.log 2>&1 &
+          timeout 35s python3 -m streamlit run /tmp/tga220/app.py --server.headless=true --server.address=127.0.0.1 --server.port=18501 --browser.gatherUsageStats=false >/tmp/tga220/streamlit.log 2>&1 &
           SERVER_PID=$!
           set -e
           READY=0
@@ -456,7 +472,7 @@ jobs:
           done
           if [ "$READY" -ne 1 ]; then
             echo 'FAIL: Streamlit health endpoint nicht erreichbar'
-            tail -n 100 /tmp/tga219/streamlit.log
+            tail -n 100 /tmp/tga220/streamlit.log
             exit 1
           fi
           echo 'PASS: Streamlit-App startet und Health-Endpunkt antwortet'
@@ -466,7 +482,7 @@ jobs:
           from pathlib import Path
           from streamlit.testing.v1 import AppTest
           os.environ['TGA_TEST_MODE']='1'
-          app=Path('/tmp/tga219/app.py')
+          app=Path('/tmp/tga220/app.py')
           result=AppTest.from_file(str(app),default_timeout=25).run()
           errors=list(result.exception)
           if errors:
@@ -476,36 +492,36 @@ jobs:
           PY
           kill "$SERVER_PID" 2>/dev/null || true
           wait "$SERVER_PID" 2>/dev/null || true
-          (cd /tmp/tga219 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.1.9.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.1.9.zip
+          (cd /tmp/tga220 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.2.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.2.0.zip
           python3 - <<'PY'
           import zipfile,ast
-          path='TGA_Product_Finder_Update_v2.1.9.zip'
+          path='TGA_Product_Finder_Update_v2.2.0.zip'
           with zipfile.ZipFile(path) as z:
               names=set(z.namelist())
               assert {'app.py','version.json','TGA_Updater.ps1'} <= names, 'Update-Dateien fehlen'
               app=z.read('app.py').decode('utf-8')
-              assert 'APP_VERSION = "2.1.9"' in app, 'Falsche App-Version'
+              assert 'APP_VERSION = "2.2.0"' in app, 'Falsche App-Version'
               ast.parse(app)
           print('PASS: ZIP-Paket, App-Version und Python-Syntax')
           PY
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.1.9.zip
-          git commit -m 'Build TGA Product Finder v2.1.9'
+          git add TGA_Product_Finder_Update_v2.2.0.zip
+          git commit -m 'Build TGA Product Finder v2.2.0'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.1.9.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.2.0.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.1.9','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.1.9.zip','sha256':sha}
+          data={'version':'2.2.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.2.0.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.1.9 update manifest'
+          git commit -m 'Publish v2.2.0 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
