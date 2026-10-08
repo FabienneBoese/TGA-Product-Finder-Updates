@@ -282,10 +282,12 @@ jobs:
           new="    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()\n    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op\n    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
           s=s.replace(old,new,1)
           # Typenfeld im Produktbereich bearbeitbar; Originalbezeichnung und Artikelnummer unveraendert.
-          target="   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):"
-          assert s.count(target)==1
-          replacement=target+"\n    _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''\n    _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}',help='Nur den konkreten Herstellertyp eintragen; die Artikelnummer bleibt unverändert.')\n    if _new_model.strip()!=_current_model.strip():\n     if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):\n      con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()"
-          s=s.replace(target,replacement,1)
+          targets=[line for line in s.splitlines() if "with st.expander(f'{m} · {p}'" in line and "conf" in line]
+          assert len(targets)==1,('component expander',len(targets))
+          target=targets[0]
+          pad=target[:len(target)-len(target.lstrip())]
+          insert=pad+" _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''\n"+pad+" _new_model=st.text_input('Typ / Modell (getrennt von Artikelnummer)',value=_current_model,key=f'model_type_{cid}')\n"+pad+" if _new_model.strip()!=_current_model.strip():\n"+pad+"  if st.button('Typ / Modell speichern',key=f'save_model_{cid}'):\n"+pad+"   con.execute('UPDATE components SET model_type=? WHERE id=?',(_new_model.strip(),cid));con.commit();st.rerun()"
+          s=s.replace(target,target+"\n"+insert,1)
           print('PASS: separate persistente Modellspalte, bestaetigte Bezeichnung und manuelle Typkorrektur')
           ast.parse(s)
           print('PASS: structured technical type extraction and unverified family separation')
