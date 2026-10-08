@@ -1,0 +1,73 @@
+name: Audit Identifier Recognition v2.2.4
+on:
+  push:
+    paths: ['.github/workflows/audit-identifier-v224.yml']
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile,ast,sqlite3,tempfile,os,traceback,io
+          from pathlib import Path
+          s=zipfile.ZipFile('TGA_Product_Finder_Update_v2.2.4.zip').read('app.py').decode()
+          tree=ast.parse(s)
+          names=['classify_component_identifier','score','status','read_excel','detect_header','clean','db']
+          report=['AUDIT v2.2.4 - productive ZIP','AST syntax: PASS']
+          scope={'re':__import__('re'),'pd':__import__('pandas'),'io':io}
+          for n in tree.body:
+           if isinstance(n,ast.FunctionDef) and n.name in names:
+            try:exec(compile(ast.Module(body=[n],type_ignores=[]),'<audit>','exec'),scope)
+            except Exception as e:report.append('LOAD '+n.name+': '+repr(e))
+          fn=scope['classify_component_identifier']
+          cases=[
+           ('HELIOS','SilentBox','SB 125 A','type'),
+           ('HELIOS','Drehzahl-Potentiometer','PA 10','type'),
+           ('TROX','Brandschutzklappe','FKRS-EU/DE/125','type'),
+           ('TROX','Überströmgitter','VFL','type'),
+           ('LUNOS','Silvento','V-EC','type'),
+           ('LUNOS','Silvento Unterputzgehäuse','3/UP','type'),
+           ('TROX','Bedarfsposition','LVS','type'),
+           ('Danfoss','Fernwärmeübergabestation','ECL Comfort 310','type'),
+           ('Reflex','MAG','N 300','type'),
+           ('Reflex','Nachspeisung','Servitec S','type'),
+           ('Reflex','Systemtrenner','Fillset Compact Twin','family'),
+           ('WIKA','Manometer','111.10 NG 63','type'),
+           ('Viega','Lufttopf DN40','Profipress','family'),
+           ('GEBERIT','Renova Plan','501.632.00.1','article'),
+           ('GROHE','Eurosmart CE','36327001','article'),
+           ('UNKNOWN','Valve','A12','unclassified')]
+          for maker,product,value,expected in cases:
+           result=fn(maker,product,value)
+           report.append(('PASS' if result[2]==expected else 'FAIL')+f' {maker} {value!r}: {result!r}; expected={expected}')
+          # Test the actual Excel parser and field separation
+          import pandas as pd
+          from io import BytesIO
+          sheet=pd.DataFrame([{'Hersteller':'HELIOS','Bezeichnung':'SilentBox','Typ/Modell':'SB 125 A','Artikelnummer':'','Gewerk':'Lüftung'},{'Hersteller':'GEBERIT','Bezeichnung':'Renova Plan','Typ/Modell':'','Artikelnummer':'501.632.00.1','Gewerk':'Sanitär'}])
+          buf=BytesIO();sheet.to_excel(buf,index=False)
+          try:
+           parsed=scope['read_excel'](buf.getvalue())
+           report.append('EXCEL '+repr(parsed.to_dict('records')))
+           report.append('EXCEL '+('PASS' if parsed.iloc[0]['Typ / Modell']=='SB 125 A' and parsed.iloc[0]['Artikelnummer']=='' and parsed.iloc[1]['Artikelnummer']=='501.632.00.1' else 'FAIL'))
+          except Exception as e:report.append('EXCEL ERROR '+repr(e))
+          # Inspect migration and score semantics
+          for needle in ["if _kind=='family'","if _kind in ('type','type_candidate')","'Datenvollständigkeit %'","'Produktidentifikation'","auto_ok=sum","score(r)"]:
+           report.append('SOURCE '+needle+': '+str(s.count(needle)))
+          try:
+           for m,p,a in [('Reflex','MAG','N 300'),('Reflex','Systemtrenner','Fillset Compact Twin'),('GEBERIT','Renova Plan','501.632.00.1')]:
+            row=pd.Series({'Hersteller':m,'Bezeichnung':p,'Artikelnummer':a,'Typ / Modell':''})
+            report.append(f'SCORE {m} {a}: {scope["score"](row)}')
+          except Exception as e:report.append('SCORE ERROR '+repr(e))
+          Path('identifier_audit_v224.txt').write_text('\n'.join(report)+'\n',encoding='utf-8')
+          print('\n'.join(report))
+          PY
+          git config user.name 'TGA Audit Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add identifier_audit_v224.txt
+          git commit -m 'Record v2.2.4 identifier recognition audit'
+          git push origin HEAD:main
