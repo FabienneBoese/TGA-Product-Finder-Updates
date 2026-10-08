@@ -1,0 +1,20 @@
+name: Diagnose KERMI save integration
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-kermi.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.0.15.zip app.py > /tmp/tga_app.py
+          python3 - <<'PY'
+          s=open('/tmp/tga_app.py').read().splitlines()
+          for i,l in enumerate(s):
+              if any(k in l for k in ('universal-hits-', 'kermi_direct_', 'Offline speichern','offline speichern','PDF-Kandidaten','universal-source-')):
+                  print(f'--- LINE {i+1} ---')
+                  for j in range(max(0,i-4),min(len(s),i+9)):
+                      print(f'{j+1:04d} {s[j]}')
+          PY
