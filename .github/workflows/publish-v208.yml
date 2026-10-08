@@ -1,8 +1,8 @@
-name: Publish TGA Product Finder v2.0.8
+name: Publish TGA Product Finder v2.0.9
 on:
   push:
     paths:
-      - '.github/workflows/publish-v208.yml'
+      - '.github/workflows/publish-v209.yml'
 permissions:
   contents: write
 jobs:
@@ -14,46 +14,57 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/tga207
-          unzip -q TGA_Product_Finder_Update_v2.0.7.zip -d /tmp/tga207
+          unzip -q TGA_Product_Finder_Update_v2.0.8.zip -d /tmp/tga207
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
           p=Path('/tmp/tga207/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.7"')==1
-          s=s.replace('APP_VERSION = "2.0.7"','APP_VERSION = "2.0.8"',1)
+          assert s.count('APP_VERSION = "2.0.8"')==1
+          s=s.replace('APP_VERSION = "2.0.8"','APP_VERSION = "2.0.9"',1)
           marker='def helios_search_pdf_candidates(model='
           assert s.count(marker)==1
           start=s.index(marker)
           end=s.index('def discover_official_product_docs(',start)
           replacement="def helios_search_pdf_candidates(model='SB 125 A'):\n \"\"\"HELIOS SB 125 A: official product page and known official document paths.\"\"\"\n import requests,re\n from bs4 import BeautifulSoup\n from urllib.parse import urljoin,urlparse,unquote\n if re.sub(r'[^a-z0-9]','',model.lower())!='sb125a':\n  raise ValueError('Nur HELIOS SB 125 A unterstützt.')\n base='https://select.heliosventilatoren.de/de-de/get/product?language_id=de&ref_no=09506'\n session=requests.Session()\n session.headers.update({'User-Agent':'Mozilla/5.0','Accept-Language':'de-DE,de;q=0.9'})\n known=[\n  ('Montage- und Betriebsvorschrift SB AC (08/2025)','https://global.heliosventilatoren.de/mediadata/product/mbv/SB_AC_95235-002_0825.pdf'),\n  ('Montage- und Betriebsvorschrift SB AC (11/2023)','https://global.heliosventilatoren.de/mediadata/product/mbv/SB_AC_95235-002_1123.pdf'),\n  ('Schaltplan ss_508','https://global.heliosventilatoren.de/mediadata/product/schaltplan/ss_508.pdf'),\n  ('Maßzeichnung mb1949001','https://global.heliosventilatoren.de/mediadata/product/massblatt/mb1949001.pdf')]\n candidates=list(known);warnings=[];found={}\n try:\n  page=session.get(base,timeout=15)\n  page.raise_for_status()\n  soup=BeautifulSoup(page.text,'html.parser')\n  for a in soup.select('a[href]'):\n   url=urljoin(page.url,a.get('href',''))\n   title=a.get_text(' ',strip=True) or a.get('title','') or urlparse(url).path.rsplit('/',1)[-1]\n   if '.pdf' in urlparse(url).path.lower():candidates.append((title,url))\n except requests.RequestException as exc:\n  warnings.append('HELIOS-Produktseite nicht abrufbar: '+str(exc)[:120])\n for title,url in candidates[:100]:\n  parsed=urlparse(url)\n  host=(parsed.hostname or '').lower()\n  if parsed.scheme!='https' or not (host=='heliosventilatoren.de' or host.endswith('.heliosventilatoren.de')):continue\n  try:\n   response=session.get(url,timeout=18,stream=True,allow_redirects=True)\n   response.raise_for_status()\n   final=response.url\n   final_host=(urlparse(final).hostname or '').lower()\n   if not (final_host=='heliosventilatoren.de' or final_host.endswith('.heliosventilatoren.de')):continue\n   first=next(response.iter_content(chunk_size=4096),b'')\n   if not first.startswith(b'%PDF-'):continue\n   if final in found:continue\n   found[final]={'Kategorie':classify(title,final,'generic'),'Titel':title,\n     'Treffer %':75,'URL':final,'Quellseite':base,\n     'Relevant':False,'Priorität':'Ausführung und Dokumentstand prüfen'}\n  except requests.RequestException:continue\n if not found:warnings.append('Kein offizieller PDF-Endpunkt lieferte verifizierbare PDF-Daten.')\n return list(found.values())[:30],warnings\n\n"
           s=s[:start]+replacement+s[end:]
-          old="HELIOS-PDFs direkt beim Hersteller prüfen"
+          old="HELIOS-Dokumente inkl. Direktlinks prüfen"
           assert s.count(old)==1
-          s=s.replace(old,"HELIOS-Dokumente inkl. Direktlinks prüfen",1)
+          s=s.replace(old,"HELIOS-Dokumente mit Versionsprüfung suchen",1)
           s=s.replace("Keine direkt abrufbaren HELIOS-PDFs gefunden. Keine fremden Dokumente zugeordnet.","Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.",1)
+          old_return=" return list(found.values())[:30],warnings"
+          assert s.count(old_return)==1
+          new_return=""" ordered=list(found.values())
+ if any('SB_AC_95235-002_0825.pdf' in item.get('URL','') for item in ordered):
+  ordered=[item for item in ordered if 'SB_AC_95235-002_1123.pdf' not in item.get('URL','')]
+  for item in ordered:
+   if 'SB_AC_95235-002_0825.pdf' in item.get('URL',''):
+    item['Treffer %']=80
+    item['Priorität']='Neueste verfügbare Ausgabe; Produktzuordnung prüfen'
+ return ordered[:30],warnings"""
+          s=s.replace(old_return,new_return,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
           assert Path('/tmp/tga207/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga207 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.8.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.8.zip
+          (cd /tmp/tga207 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.9.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.9.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.8.zip
-          git commit -m 'Build TGA Product Finder v2.0.8'
+          git add TGA_Product_Finder_Update_v2.0.9.zip
+          git commit -m 'Build TGA Product Finder v2.0.9'
           git pull --rebase origin main
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.8.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.9.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.8','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.8.zip','sha256':sha}
+          data={'version':'2.0.9','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.9.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.8 update manifest'
+          git commit -m 'Publish v2.0.9 update manifest'
           git pull --rebase origin main
           git push
