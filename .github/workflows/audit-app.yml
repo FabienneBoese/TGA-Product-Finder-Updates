@@ -45,6 +45,42 @@ jobs:
           assert not list(app.exception),[str(e.message) for e in app.exception]
           print('PASS: Streamlit second rerun without exceptions')
           PY
+      - name: Exercise production KERMI search with mocked HTTP and real PDF
+        run: |
+          python3 - <<'PY'
+          import ast,io,unittest.mock as mock
+          from pathlib import Path
+          from reportlab.pdfgen import canvas
+          source=Path('/tmp/tga_audit/app.py').read_text(encoding='utf-8')
+          fn=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name=='search_document_focused_web')
+          module=ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[]))
+          scope={}
+          exec(compile(module,'production_app.py','exec'),scope)
+          buffer=io.BytesIO();c=canvas.Canvas(buffer)
+          c.drawString(40,750,'ERE10 AK3 / E0E10 AK3')
+          c.save()
+          pdf=buffer.getvalue()
+          class Response:
+              def __init__(self,status=404,data=b''):
+                  self.status_code=status
+                  self._content=data
+                  self.content=data
+                  self.text=data.decode('utf-8','replace')
+              def iter_content(self,n):
+                  yield self._content
+              def close(self):pass
+          class Session:
+              def __init__(self):self.headers={}
+              def get(self,*a,**kw):return Response()
+          with mock.patch('requests.Session',Session),mock.patch('requests.get',return_value=Response(200,pdf)):
+              candidates,notes=scope['search_document_focused_web']('KERMI','Badheizkoerper','Basic-E')
+          assert isinstance(candidates,list)
+          assert any('PDF-Technischer Typ: ERE10 AK3' in x for x in notes),notes
+          assert any('PDF-Technischer Typ: E0E10 AK3' in x for x in notes),notes
+          assert any('keine belegte Zuordnung zur Produktfamilie' in x for x in notes),notes
+          assert any('keine automatische Variantenfreigabe' in x for x in notes),notes
+          print('PASS: Echte Suchfunktion verarbeitet PDF mit HTTP-Mocks ohne automatische Familienfreigabe')
+          PY
       - name: PDF and XLSX roundtrip and offline dedup
         run: |
           python3 - <<'PY'
