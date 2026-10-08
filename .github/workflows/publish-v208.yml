@@ -270,17 +270,6 @@ jobs:
            " return found,notes",
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
-          # Dokumentationsuebersicht: kompakte Ampel und irrelevante Spalte entfernen.
-          old="overview.append({'Status':docstatus,'Hersteller':om,'Bauteil':op,'Verbaute Komponenten':', '.join(selections) if selections else '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
-          new_line="overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bauteil':op,'Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
-          assert s.count(old)==1,'Overview row structure changed'
-          s=s.replace(old,new_line,1)
-          old="searched=sum(1 for x in overview if not x['Status'].startswith('🔴'))"
-          assert s.count(old)==1
-          # Existing searched metric still works because first emoji is preserved.
-          assert "Verbaute Komponenten" not in new_line
-          assert "docstatus.split()[0]" in s
-          print('PASS: Statusampel kompakt und Spalte Verbaute Komponenten ausgeblendet')
           # Keine riskante automatische Umdeutung alter Artikelnummern:
           # Typ/Modell ist eine eigene persistente Information.
           schema_anchor="  if 'manufacturer_product_name' not in ccols: c.execute('ALTER TABLE components ADD COLUMN manufacturer_product_name TEXT DEFAULT \"\"')"
