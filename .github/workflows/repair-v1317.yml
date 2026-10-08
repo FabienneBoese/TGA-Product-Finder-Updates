@@ -111,9 +111,11 @@ jobs:
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add TGA_Product_Finder_Update_v1.7.2.zip
-          git commit -m 'Build v1.7.2 product-page document context'
-          git push
-          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          if ! git diff --cached --quiet; then
+            git commit -m 'Build v1.7.2 product-page document context'
+            git push
+          fi
+          PACKAGE_COMMIT=$(git log -1 --format=%H -- TGA_Product_Finder_Update_v1.7.2.zip)
           SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.2.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
@@ -123,4 +125,5 @@ jobs:
           PY
           git add update_manifest.json
           git commit -m 'Publish v1.7.2 manifest'
+          git pull --rebase origin main
           git push
