@@ -41,14 +41,19 @@ jobs:
            '',
           ]
           s=s.replace(marker,'\n'.join(strategy)+'\n'+marker,1)
-          ui="     if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):"
-          assert s.count(ui)==1
+          needle="if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):"
+          lines=s.splitlines()
+          matches=[i for i,line in enumerate(lines) if needle in line]
+          assert len(matches)==1
+          idx=matches[0]
+          indent=lines[idx][:len(lines[idx])-len(lines[idx].lstrip())]
           addition=[
-           '     with st.expander("Herstellerübergreifende Suchmuster für dieses Produkt",expanded=False):',
-           '      st.caption("Suchbegriffe für Typ, Artikelnummer und Dokumentarten. Treffer sind nicht automatisch freigegeben.")',
-           '      st.dataframe(pd.DataFrame(universal_product_search_patterns(m,p,a)),hide_index=True,width="stretch")',
+           indent+'with st.expander("Herstellerübergreifende Suchmuster für dieses Produkt",expanded=False):',
+           indent+' st.caption("Suchbegriffe für Typ, Artikelnummer und Dokumentarten. Treffer sind nicht automatisch freigegeben.")',
+           indent+' st.dataframe(pd.DataFrame(universal_product_search_patterns(m,p,a)),hide_index=True,width="stretch")',
           ]
-          s=s.replace(ui,'\n'.join(addition)+'\n'+ui,1)
+          lines[idx:idx]=addition
+          s='\\n'.join(lines)+'\\n'
           assert 'universal_product_search_patterns(m,p,a)' in s
           print('PASS: reusable universal search patterns visible in generic product search')
           p.write_text(s,encoding='utf-8')
