@@ -34,14 +34,7 @@ jobs:
           s=s.replace("Keine direkt abrufbaren HELIOS-PDFs gefunden. Keine fremden Dokumente zugeordnet.","Kein HELIOS-PDF abrufbar. Details unter Hinweise zur Suche.",1)
           old_return=" return list(found.values())[:30],warnings"
           assert s.count(old_return)==1
-          new_return=""" ordered=list(found.values())
- if any('SB_AC_95235-002_0825.pdf' in item.get('URL','') for item in ordered):
-  ordered=[item for item in ordered if 'SB_AC_95235-002_1123.pdf' not in item.get('URL','')]
-  for item in ordered:
-   if 'SB_AC_95235-002_0825.pdf' in item.get('URL',''):
-    item['Treffer %']=80
-    item['Priorität']='Neueste verfügbare Ausgabe; Produktzuordnung prüfen'
- return ordered[:30],warnings"""
+          new_return=" ordered=list(found.values())\n if any('SB_AC_95235-002_0825.pdf' in item.get('URL','') for item in ordered):\n  ordered=[item for item in ordered if 'SB_AC_95235-002_1123.pdf' not in item.get('URL','')]\n  for item in ordered:\n   if 'SB_AC_95235-002_0825.pdf' in item.get('URL',''):\n    item['Treffer %']=80\n    item['Priorität']='Neueste verfügbare Ausgabe; Produktzuordnung prüfen'\n return ordered[:30],warnings"
           s=s.replace(old_return,new_return,1)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
