@@ -42,7 +42,7 @@ jobs:
           s=s.replace(marker,'\n'.join(dedup)+'\n'+marker,1)
           ui=" for _k in _kermi_hits: st.write('PDF-Kandidat: '+str(_k.get('Titel','Unbenannt')))"
           assert s.count(ui)==1
-          ui_new=ui+"\n"+ui[:len(ui)-len(ui.lstrip())]+"for _k in _kermi_hits: st.caption('Quelle: '+document_source_policy(str(_k.get('URL','')))[0]+' · Fachliche Freigabe offen')"
+          ui_new=ui+"; st.caption('Quelle: '+document_source_policy(str(_k.get('URL','')))[0]+' · Fachliche Freigabe offen')"
           s=s.replace(ui,ui_new,1)
           assert 'hashlib.file_digest' in s and 'document_source_policy(str(_k.get(' in s
           print('PASS: SHA-256 content duplicate check per product, source classification visible for KERMI')
