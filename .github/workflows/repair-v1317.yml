@@ -1,4 +1,4 @@
-name: Publish v1.6.0 variant verification
+name: Publish v1.6.1 guided FKRS-EU checks
 on:
   push:
     paths:
@@ -13,50 +13,40 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga160
-          unzip -q TGA_Product_Finder_Update_v1.5.9.zip -d /tmp/tga160
+          mkdir -p /tmp/tga161
+          unzip -q TGA_Product_Finder_Update_v1.6.0.zip -d /tmp/tga161
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga160/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.5.9"')==1
-          s=s.replace('APP_VERSION = "1.5.9"','APP_VERSION = "1.6.0"',1).replace('persistent_update_install_v159','persistent_update_install_v160',1)
+          p=Path('/tmp/tga161/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.6.0"')==1
+          s=s.replace('APP_VERSION = "1.6.0"','APP_VERSION = "1.6.1"',1).replace('persistent_update_install_v160','persistent_update_install_v161',1)
           marker='   if auto:\n'
-          assert s.count(marker)>=1
-          insert='''   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':
-              st.markdown('**Ausführungsprüfung – FKRS-EU**')
-              st.caption('Gemeinsame Herstellerunterlagen können für die Produktfamilie genutzt werden. Die Eignung für die konkret verbaute Ausführung muss separat nachgewiesen werden.')
-              _variant=clean(a).upper()
-              _overflow=('AA' in _variant.split('/') or 'Z43RM' in _variant or 'ÜBERSTRÖM' in clean(p).upper())
-              st.write(f'Verbaute Ausführung laut Excel: **{a or p}**')
-              if _overflow:
-               st.warning('Überström-Ausführung erkannt: Überströmfunktion, Zubehör AA/Z43RM, Einbausituation und zugehörige Verwendbarkeitsnachweise fachlich prüfen.')
-              else:
-               st.info('Standardausführung: Einbausituation, Antrieb/Zubehör und Gültigkeitsbereich von DoP, Montageanleitung und Nachweisen prüfen.')
-              st.caption('Status: Ausführungsnachweise fachlich offen. Heruntergeladene PDFs gelten nicht automatisch als freigegeben.')
-          '''
+          assert marker in s
+          insert="   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    st.markdown('**Geführte Ausführungsprüfung – FKRS-EU**')\n    st.caption('Projektbezogene Angaben; keine automatische bauaufsichtliche Freigabe.')\n    con.execute('CREATE TABLE IF NOT EXISTS variant_checks(component_id INTEGER PRIMARY KEY, model TEXT, installation TEXT, overflow TEXT, atex TEXT, special TEXT, evidence TEXT, note TEXT, updated_at TEXT)')\n    _saved=con.execute('SELECT model,installation,overflow,atex,special,evidence,note FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    _opts=['Noch nicht geprüft','Ja','Nein','Unklar']\n    _pick=lambda val: _opts.index(val) if val in _opts else 0\n    with st.form(key=f'fkrs-check-{cid}'):\n     st.write(f'**Verbaute Ausführung:** {a or p}')\n     _installation=st.selectbox('Einbausituation mit gültiger Montageanleitung abgeglichen?',_opts,index=_pick(_saved[1] if _saved else None))\n     _overflow=st.selectbox('Überströmfunktion / Zubehör für diese Ausführung geprüft?',_opts,index=_pick(_saved[2] if _saved else None))\n     _atex=st.selectbox('Explosionsgefährdeter Bereich (ATEX) vorhanden?',_opts,index=_pick(_saved[3] if _saved else None))\n     _special=st.selectbox('Montage-Sonderanwendung vorhanden?',_opts,index=_pick(_saved[4] if _saved else None))\n     _evidence=st.selectbox('Ausführungsspezifische Nachweise auf Geltungsbereich geprüft?',_opts,index=_pick(_saved[5] if _saved else None))\n     _note=st.text_area('Prüfvermerk / Fundstelle / verantwortliche Person',value=_saved[6] if _saved and _saved[6] else '',key=f'fkrs-note-{cid}')\n     _save=st.form_submit_button('Projektprüfung speichern')\n    if _save:\n     con.execute(\"INSERT OR REPLACE INTO variant_checks(component_id,model,installation,overflow,atex,special,evidence,note,updated_at) VALUES(?,?,?,?,?,?,?,?,datetime('now'))\",(cid,clean(a),_installation,_overflow,_atex,_special,_evidence,_note))\n     con.commit()\n     st.success('Projektprüfung gespeichert – keine automatische Freigabe.')\n    _state=con.execute('SELECT installation,overflow,atex,special,evidence FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    if not _state or any(x in ('Noch nicht geprüft','Unklar') for x in _state):\n     st.warning('Ausführungsprüfung offen: Angaben fehlen oder sind unklar.')\n    elif _state[2]=='Ja' or _state[3]=='Ja':\n     st.warning('ATEX bzw. Sondermontage angegeben: zusätzliche anwendungsspezifische Nachweise prüfen.')\n    else:\n     st.info('Angaben erfasst. Fachliche Dokumentenfreigabe weiterhin separat erforderlich.')\n"
           s=s.replace(marker,insert+marker,1)
-          assert s.count('**Ausführungsprüfung – FKRS-EU**')==1
-          assert s.count('persistent_update_install_v160')==1
-          p.write_text(s,encoding='utf-8');py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga160/version.json').write_text(json.dumps({'version':'1.6.0'},indent=2)+'\n',encoding='utf-8')
-          print('PASS: separate variant notice, no automatic approval, syntax valid')
+          assert s.count('**Geführte Ausführungsprüfung – FKRS-EU**')==1
+          assert s.count("with st.form(key=f'fkrs-check-{cid}')")==1
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          Path('/tmp/tga161/version.json').write_text(json.dumps({'version':'1.6.1'})+'\n',encoding='utf-8')
+          print('PASS guided project checks; per-component SQLite persistence; no auto approval')
           PY
-          (cd /tmp/tga160 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.6.0.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.6.0.zip
+          (cd /tmp/tga161 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.6.1.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.6.1.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.6.0.zip
-          git commit -m 'Build v1.6.0 variant-specific checks'
+          git add TGA_Product_Finder_Update_v1.6.1.zip
+          git commit -m 'Build v1.6.1 guided checks'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.6.0.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.6.1.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.6.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.6.0.zip','sha256':sha}
+          data={'version':'1.6.1','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.6.1.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.6.0 manifest'
+          git commit -m 'Publish v1.6.1 manifest'
           git push
