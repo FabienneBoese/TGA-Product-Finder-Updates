@@ -22,8 +22,8 @@ jobs:
           p=Path('/tmp/tga154/app.py')
           s=p.read_text(encoding='utf-8')
           assert s.count('APP_VERSION = "1.5.3"')==1
-          s=s.replace('APP_VERSION = "1.5.3"','APP_VERSION = "1.5.3"',1)
-          s=s.replace('persistent_update_install_v152','persistent_update_install_v154',1)
+          s=s.replace('APP_VERSION = "1.5.3"','APP_VERSION = "1.5.4"',1)
+          s=s.replace('persistent_update_install_v153','persistent_update_install_v154',1)
           # In v1.5.3 the component expanders were accidentally nested inside
           # the "offline PDFs exist" branch. Move them out of that branch.
           marker="st.divider(); st.subheader('Komponenten & Dokumentenmappen')"
