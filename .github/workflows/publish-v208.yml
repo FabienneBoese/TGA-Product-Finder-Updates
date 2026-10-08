@@ -287,9 +287,10 @@ jobs:
           assert s.count(schema_anchor)==1
           s=s.replace(schema_anchor,schema_anchor+"\n  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT \"\"')",1)
           # Explizit bestaetigte Herstellerbezeichnung vorziehen, sonst Original beibehalten.
-          old="    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bauteil':op,'Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
+          row_lines=[line for line in s.splitlines() if "overview.append({" in line and "'Offline-PDFs':ooffline" in line]
+          assert len(row_lines)==1,('overview row count',len(row_lines))
+          old=row_lines[0]
           new="    _verified_name,_name_ok,_model=con.execute('SELECT manufacturer_product_name,product_name_confirmed,model_type FROM components WHERE id=?',(ocid,)).fetchone()\n    _display_name=_verified_name if _name_ok and str(_verified_name or '').strip() else op\n    overview.append({'Status':docstatus.split()[0],'Hersteller':om,'Bezeichnung':_display_name,'Typ / Modell':_model or '—','Artikelnummer':oa or '—','Erkennung %':oconf,'Produkterkennung':ostat,'Empfohlen':orecommended,'Offline-PDFs':ooffline,'Online-Nachweise':oonline,'Prüfen':ocheck})"
-          assert s.count(old)==1
           s=s.replace(old,new,1)
           # Typenfeld im Produktbereich bearbeitbar; Originalbezeichnung und Artikelnummer unveraendert.
           target="   with st.expander(f'{m} · {p}'+(f' · {a}' if a else '')+f' — {conf}%'):"
