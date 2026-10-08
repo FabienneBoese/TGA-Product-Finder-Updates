@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.29 Model Recognition
+name: Publish TGA Product Finder v2.0.30 Model Recognition
 on:
   push:
     paths:
@@ -13,118 +13,109 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga229
-          unzip -q TGA_Product_Finder_Update_v2.0.28.zip -d /tmp/tga229
+          mkdir -p /tmp/tga230
+          unzip -q TGA_Product_Finder_Update_v2.0.29.zip -d /tmp/tga230
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga229/app.py')
+          p=Path('/tmp/tga230/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.28"')==1
-          s=s.replace('APP_VERSION = "2.0.28"','APP_VERSION = "2.0.29"',1)
+          assert s.count('APP_VERSION = "2.0.29"')==1
+          s=s.replace('APP_VERSION = "2.0.29"','APP_VERSION = "2.0.30"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
           new=[
            'def search_document_focused_web(manufacturer,product,model,official_url=""):',
-           ' """Inspect manufacturer HTML, data attributes and embedded document URLs; no auto approval."""',
-           ' import requests,re,html',
+           ' """Fail closed on unverified product families; crawl only matching official product pages."""',
+           ' import requests,re',
            ' from bs4 import BeautifulSoup',
            ' from urllib.parse import urlparse,urljoin,unquote',
            ' from collections import deque',
-           ' manufacturer=str(manufacturer).strip();model=str(model).strip()',
-           ' seeds=[]',
-           ' if "kermi" in manufacturer.casefold():seeds.append("https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/")',
-           ' if official_url and urlparse(str(official_url)).scheme=="https":seeds.insert(0,str(official_url))',
-           ' if not seeds:return [],["Dokumenten-Crawler: Keine geprüfte Hersteller-Startseite vorhanden"]',
-           ' allowed={urlparse(url).hostname for url in seeds};session=requests.Session()',
-           ' session.headers.update({"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
-           ' queue=deque((url,0) for url in seeds);visited=set();seen_docs=set();found=[];notes=[]',
-           ' pages=0;examined=0;navigation=0;rejected=0;queued=0;embedded=0;external=0',
-           ' tokens=[t for t in re.split(r"[^a-z0-9]+",(str(product)+" "+model).casefold()) if len(t)>3]',
-           ' def record(target,label,page,related):',
-           '  nonlocal rejected,external',
-           '  parsed=urlparse(target)',
-           '  if parsed.scheme!="https" or not parsed.hostname:return',
-           '  if parsed.hostname not in allowed:external+=1;return',
-           '  if not related:rejected+=1;return',
-           '  if target in seen_docs:return',
-           '  seen_docs.add(target)',
-           '  found.append({"Kategorie":"Sonstiges","Titel":label or parsed.path.rsplit("/",1)[-1],"Treffer %":45,"URL":target,"Quellseite":page,"Relevant":False,"Priorität":"Ungeprüfter Dokumentverweis; Dateityp und Ausführung bestätigen"})',
-           ' while queue and pages<8:',
+           ' manufacturer=str(manufacturer).strip();product=str(product).strip();model=str(model).strip()',
+           ' official_url=str(official_url or "").strip();parsed=urlparse(official_url)',
+           ' notes=[];wanted=" ".join((product+" "+model).casefold().replace("-"," ").split())',
+           ' basic_e="kermi" in manufacturer.casefold() and bool(re.search(r"basic[ -]?e(?![a-z])",wanted))',
+           ' if basic_e:notes.append("Produktabgleich: KERMI Basic-E ist nicht automatisch mit Basic 50 gleichzusetzen; bisherige Basic-50-Startseite ausgeschlossen")',
+           ' if parsed.scheme!="https" or not parsed.hostname:',
+           '  notes.append("Produktabgleich: Keine bestätigte HTTPS-Herstellerproduktseite; keine ungezielte Dokumentensuche")',
+           '  return [],notes',
+           ' host=parsed.hostname.casefold()',
+           ' if "kermi" in manufacturer.casefold() and not (host=="kermi.com" or host.endswith(".kermi.com")):',
+           '  notes.append("Produktabgleich: URL liegt nicht auf einer KERMI-Herstellerdomain; keine automatische Übernahme")',
+           '  return [],notes',
+           ' url_text=unquote(parsed.path).casefold().replace("-"," ").replace("_"," ")',
+           ' if basic_e and not re.search(r"basic\\s*e(?![a-z])",url_text):',
+           '  notes.append("Produktabgleich: Offizielle URL nennt Basic-E nicht eindeutig; Herstellerseite manuell bestätigen")',
+           '  return [],notes',
+           ' if not basic_e:',
+           '  model_tokens=[t for t in re.split(r"[^a-z0-9]+",model.casefold()) if len(t)>2]',
+           '  if model_tokens and not all(t in url_text for t in model_tokens):',
+           '   notes.append("Produktabgleich: Modellkennung in Hersteller-URL nicht eindeutig; keine automatische Zuordnung")',
+           '   return [],notes',
+           ' notes.append("Produktabgleich: URL-Pfad passt zur Modellkennung; inhaltliche Herstellerbestätigung weiterhin offen")',
+           ' session=requests.Session();session.headers.update({"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
+           ' queue=deque([(official_url,0)]);visited=set();seen=set();found=[];pages=0;links=0;rejected=0',
+           ' while queue and pages<5:',
            '  page,depth=queue.popleft()',
            '  if page in visited:continue',
            '  visited.add(page)',
            '  try:',
            '   response=session.get(page,timeout=12,allow_redirects=False)',
            '   if response.status_code!=200 or "text/html" not in response.headers.get("content-type","").lower():continue',
-           '   pages+=1;soup=BeautifulSoup(response.text,"html.parser");ranked=[]',
-           '   for anchor in soup.select("a[href]"):',
-           '    target=urljoin(page,anchor.get("href",""));parsed=urlparse(target)',
-           '    if parsed.scheme!="https":continue',
-           '    label=anchor.get_text(" ",strip=True);context=(label+" "+unquote(parsed.path)).casefold()',
-           '    related=bool(tokens and any(t in context for t in tokens))',
-           '    document=any(w in context for w in ("download","dokument","datenblatt","montage","anleitung","pdf","technical","dokumentation"))',
-           '    if parsed.hostname not in allowed:',
-           '     if document:external+=1',
-           '     continue',
-           '    if any(w in parsed.path.casefold() for w in ("/datenschutz","/impressum","/kontakt","/privacy","/login","/karriere")):navigation+=1;continue',
-           '    if not related and not document:navigation+=1;continue',
-           '    ranked.append((-(4*int(related)+2*int(document)+int(parsed.path.lower().endswith(".pdf"))),target,label,related,document))',
-           '   ranked.sort(key=lambda item:item[0])',
-           '   for _,target,label,related,document in ranked[:250]:',
-           '    examined+=1;parsed=urlparse(target)',
-           '    hint=parsed.path.lower().endswith(".pdf") or (document and any(w in parsed.path.casefold() for w in ("/download/","/file/","/media/")))',
-           '    if hint:record(target,label,page,related)',
-           '    elif depth<2 and (related or document) and target not in visited and len(queue)<40:queue.append((target,depth+1));queued+=1',
-           '   for tag in soup.select("[data-download],[data-file],[data-url],[data-href],a[download]")[:100]:',
-           '    for attr in ("data-download","data-file","data-url","data-href","href"):',
-           '     raw=tag.get(attr)',
-           '     if not isinstance(raw,str) or not raw.strip():continue',
-           '     target=urljoin(page,html.unescape(raw.strip()));parsed=urlparse(target)',
-           '     if parsed.scheme!="https":continue',
-           '     label=tag.get_text(" ",strip=True);context=(label+" "+unquote(parsed.path)).casefold()',
-           '     if ".pdf" not in context and not any(w in context for w in ("download","dokument","datenblatt","anleitung")):continue',
-           '     embedded+=1;record(target,label,page,bool(tokens and any(t in context for t in tokens)))',
-           '   for match in re.finditer(r"https?[^\\s\\\"\\\'<>]{5,260}\\.pdf(?:\\?[^\\s\\\"\\\'<>]{0,80})?",response.text,re.I):',
-           '    embedded+=1;target=html.unescape(match.group(0)).replace("\\\\/","/")',
-           '    context=unquote(urlparse(target).path).casefold()',
-           '    record(target,"Eingebetteter PDF-Verweis",page,bool(tokens and any(t in context for t in tokens)))',
-           '  except requests.RequestException as exc:notes.append("Crawler-Seite nicht erreichbar: "+str(exc)[:95])',
-           ' notes.append("Dokumenten-Crawler: "+str(pages)+" Herstellerseiten, "+str(examined)+" priorisierte Links, "+str(len(found))+" Dokumentkandidaten, "+str(rejected)+" verworfen")',
-           ' notes.append("Crawler-Filter: "+str(navigation)+" Navigationslinks übersprungen, "+str(queued)+" Unterseiten vorgemerkt")',
-           ' notes.append("Dokumentdiagnose: "+str(embedded)+" eingebettete Hinweise, "+str(external)+" externe Dokumentverweise (nicht automatisch übernommen)")',
-           ' notes.append("Crawler: Externe Domains nicht automatisch geöffnet; keine fachliche Freigabe")',
+           '   soup=BeautifulSoup(response.text,"html.parser")',
+           '   body=soup.get_text(" ",strip=True).casefold()[:40000]',
+           '   if basic_e and not re.search(r"basic\\s*[- ]?e(?![a-z])",body):',
+           '    notes.append("Produktabgleich: Basic-E auf geprüfter Herstellerseite nicht nachweisbar; Seite verworfen")',
+           '    continue',
+           '   pages+=1',
+           '   for anchor in soup.select("a[href]")[:1200]:',
+           '    target=urljoin(page,anchor.get("href",""));p=urlparse(target)',
+           '    if p.scheme!="https" or p.hostname!=host:continue',
+           '    label=anchor.get_text(" ",strip=True);context=(label+" "+unquote(p.path)).casefold()',
+           '    related=bool(re.search(r"basic\\s*[- ]?e(?![a-z])",context)) if basic_e else any(t in context for t in re.split(r"[^a-z0-9]+",model.casefold()) if len(t)>2)',
+           '    doc=any(t in context for t in ("pdf","download","datenblatt","montage","anleitung","dokument"))',
+           '    if not (related or doc):continue',
+           '    links+=1',
+           '    if p.path.lower().endswith(".pdf"):',
+           '     if not related:rejected+=1;continue',
+           '     if target not in seen:',
+           '      seen.add(target);found.append({"Kategorie":"Sonstiges","Titel":label or p.path.rsplit("/",1)[-1],"Treffer %":45,"URL":target,"Quellseite":page,"Relevant":False,"Priorität":"Hersteller-PDF-Kandidat; Produktvariante prüfen"})',
+           '    elif depth<1 and related and target not in visited and len(queue)<12:queue.append((target,depth+1))',
+           '  except requests.RequestException as exc:notes.append("Produktseite nicht erreichbar: "+str(exc)[:95])',
+           ' notes.append("Produktbezogene Suche: "+str(pages)+" passende Herstellerseiten, "+str(links)+" relevante Links, "+str(len(found))+" PDF-Kandidaten, "+str(rejected)+" unklare PDF-Verweise")',
+           ' notes.append("Keine automatische Freigabe; bekannte geprüfte Drittquellen bleiben unabhängig erhalten")',
            ' return found,notes',
            '',
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: embedded HTML data attributes, PDF text references and external-host diagnostics')
+          assert 'Basic-50-Startseite ausgeschlossen' in s
+          print('PASS: incorrect Basic 50 seed removed; Basic-E product URL and page validation required')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga229/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga230/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga229 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.29.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.29.zip
+          (cd /tmp/tga230 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.30.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.30.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.29.zip
-          git commit -m 'Build TGA Product Finder v2.0.29'
+          git add TGA_Product_Finder_Update_v2.0.30.zip
+          git commit -m 'Build TGA Product Finder v2.0.30'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.29.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.30.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.29','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.29.zip','sha256':sha}
+          data={'version':'2.0.30','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.30.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.29 update manifest'
+          git commit -m 'Publish v2.0.30 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
