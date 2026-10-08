@@ -14,13 +14,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/tga205
-          unzip -q TGA_Product_Finder_Update_v2.0.3.zip -d /tmp/tga205
+          unzip -q TGA_Product_Finder_Update_v2.0.4.zip -d /tmp/tga205
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
           p=Path('/tmp/tga205/app.py');s=p.read_text(encoding='utf-8')
           assert s.count('APP_VERSION = "2.0.4"')==1
-          s=s.replace('APP_VERSION = "2.0.3"','APP_VERSION = "2.0.4"',1)
+          s=s.replace('APP_VERSION = "2.0.4"','APP_VERSION = "2.0.5"',1)
           s=s.replace('persistent_update_install_v204','persistent_update_install_v205',1)
           old="    if st.button('Helios Herstellerseite automatisch auslesen',key=f'helios_extract_{cid}'):"
           assert s.count(old)==1
