@@ -14,13 +14,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/tga204
-          unzip -q TGA_Product_Finder_Update_v2.0.2.zip -d /tmp/tga204
+          unzip -q TGA_Product_Finder_Update_v2.0.3.zip -d /tmp/tga204
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
           p=Path('/tmp/tga204/app.py');s=p.read_text(encoding='utf-8')
           assert s.count('APP_VERSION = "2.0.3"')==1
-          s=s.replace('APP_VERSION = "2.0.2"','APP_VERSION = "2.0.3"',1)
+          s=s.replace('APP_VERSION = "2.0.3"','APP_VERSION = "2.0.4"',1)
           s=s.replace('persistent_update_install_v203','persistent_update_install_v204',1)
           anchor="   st.write(f'**Bewertung:** {stat}')"
           assert s.count(anchor)==1
