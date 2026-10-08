@@ -1,4 +1,4 @@
-name: Publish v1.6.2 conditional document checks
+name: Publish v1.7.0 universal document pilot
 on:
   push:
     paths:
@@ -13,40 +13,42 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga162
-          unzip -q TGA_Product_Finder_Update_v1.6.1.zip -d /tmp/tga162
+          mkdir -p /tmp/tga170
+          unzip -q TGA_Product_Finder_Update_v1.6.2.zip -d /tmp/tga170
           python3 - <<'PY'
           from pathlib import Path
           import json,py_compile
-          p=Path('/tmp/tga162/app.py');s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "1.6.1"')==1
-          s=s.replace('APP_VERSION = "1.6.1"','APP_VERSION = "1.6.2"',1).replace('persistent_update_install_v161','persistent_update_install_v162',1)
-          a=s.index("   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    st.markdown('**Geführte Ausführungsprüfung – FKRS-EU**')")
-          b=s.index('   if auto:\n',a)
-          new="   if 'trox' in clean(m).lower() and _search_product=='FKRS-EU':\n    con.execute('CREATE TABLE IF NOT EXISTS variant_checks(component_id INTEGER PRIMARY KEY, model TEXT, installation TEXT, overflow TEXT, atex TEXT, special TEXT, evidence TEXT, note TEXT, updated_at TEXT)')\n    _saved=con.execute('SELECT model,installation,overflow,atex,special,evidence,note FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n    _docs=con.execute('SELECT doc_type,title FROM documents WHERE component_id=?',(cid,)).fetchall()\n    _has_atex=any('ATEX' in (str(k)+' '+str(t)).upper() for k,t in _docs)\n    _has_special=any('SONDERANWENDUNG' in str(k).upper() or '_SV_IOM_' in str(t).upper() for k,t in _docs)\n    _variant=clean(a).upper()\n    _has_overflow=('AA' in _variant.split('/') or 'Z43RM' in _variant or 'ÜBERSTRÖM' in clean(p).upper())\n    _opts=['Noch nicht geprüft','Ja','Nein','Unklar']\n    _pick=lambda val: _opts.index(val) if val in _opts else 0\n    if _has_atex or _has_special or _has_overflow:\n     st.markdown('**Dokumentbezogene Projektprüfungen – FKRS-EU**')\n     st.caption('Nur für gefundene Zusatzdokumente oder die erkannte Sonderausführung. Standarddokumente bleiben unverändert.')\n     with st.form(key=f'fkrs-check-{cid}'):\n      if _has_atex:\n       st.write('**ATEX-Dokumente:** '+', '.join(str(t) for k,t in _docs if 'ATEX' in (str(k)+' '+str(t)).upper())[:300])\n       _atex=st.selectbox('ATEX-Anwendung für diese Komponente vorhanden?',_opts,index=_pick(_saved[3] if _saved else None))\n      else:\n       _atex=_saved[3] if _saved else 'Noch nicht geprüft'\n      if _has_special:\n       st.write('**Montage-Sonderanwendung:** '+', '.join(str(t) for k,t in _docs if 'SONDERANWENDUNG' in str(k).upper() or '_SV_IOM_' in str(t).upper())[:300])\n       _special=st.selectbox('Sondermontage bei dieser Komponente vorhanden?',_opts,index=_pick(_saved[4] if _saved else None))\n      else:\n       _special=_saved[4] if _saved else 'Noch nicht geprüft'\n      if _has_overflow:\n       st.warning('Ausführung AA/Z43RM: Überströmfunktion und Zubehör benötigen eine gesonderte Eignungsprüfung.')\n       _overflow=st.selectbox('Überströmfunktion und Zubehör für diese Ausführung nachgewiesen?',_opts,index=_pick(_saved[2] if _saved else None))\n      else:\n       _overflow=_saved[2] if _saved else 'Noch nicht geprüft'\n      _note=st.text_area('Prüfvermerk / Nachweisquelle (optional)',value=_saved[6] if _saved and _saved[6] else '',key=f'fkrs-note-{cid}')\n      _save=st.form_submit_button('Dokumentenprüfung speichern')\n     if _save:\n      con.execute(\"INSERT OR REPLACE INTO variant_checks(component_id,model,installation,overflow,atex,special,evidence,note,updated_at) VALUES(?,?,?,?,?,?,?,?,datetime('now'))\",(cid,clean(a),_saved[1] if _saved else 'Noch nicht geprüft',_overflow,_atex,_special,_saved[5] if _saved else 'Noch nicht geprüft',_note))\n      con.commit()\n      st.success('Projektbezogene Entscheidungen gespeichert – keine automatische Freigabe.')\n     _current=con.execute('SELECT overflow,atex,special FROM variant_checks WHERE component_id=?',(cid,)).fetchone()\n     if _current:\n      if _has_atex and _current[1]=='Nein': st.info('ATEX: Für dieses Projekt als nicht erforderlich angegeben; Herstellerunterlagen bleiben erhalten.')\n      if _has_special and _current[2]=='Nein': st.info('Sondermontage: Für dieses Projekt als nicht erforderlich angegeben.')\n      if _has_overflow and _current[0]!='Ja': st.warning('Überström-Ausführung: Eignungsnachweis weiterhin offen.')\n     else:\n      st.caption('Zusatzprüfungen noch nicht beantwortet.')\n    else:\n     st.caption('Keine zusätzlichen dokumentbezogenen Projektfragen erforderlich.')\n"
-          s=s[:a]+new+s[b:]
-          assert 'Geführte Ausführungsprüfung – FKRS-EU' not in s
-          assert s.count('**Dokumentbezogene Projektprüfungen – FKRS-EU**')==1
+          p=Path('/tmp/tga170/app.py');s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "1.6.2"')==1
+          s=s.replace('APP_VERSION = "1.6.2"','APP_VERSION = "1.7.0"',1).replace('persistent_update_install_v162','persistent_update_install_v170',1)
+          fn="def universal_docs_from_official_page(manufacturer,product,model,page_url):\n \"\"\"Conservative manufacturer-neutral PDF candidates; never auto approve.\"\"\"\n from urllib.parse import urlparse,urljoin\n from bs4 import BeautifulSoup\n import requests,re\n url=clean(page_url)\n u=urlparse(url)\n if u.scheme!='https' or not u.hostname or u.username or u.password: raise ValueError('Bitte eine gültige HTTPS-Herstellerseite angeben.')\n host=u.hostname.lower()\n if host in ('localhost',) or host.endswith(('.local','.internal')) or re.match(r'^\\d+\\.\\d+\\.\\d+\\.\\d+$',host): raise ValueError('Keine lokalen oder IP-Adressen erlaubt.')\n r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=20,allow_redirects=True)\n r.raise_for_status()\n final=urlparse(r.url)\n if final.scheme!='https' or not final.hostname or not (final.hostname==host or final.hostname.endswith('.'+host) or host.endswith('.'+final.hostname)): raise ValueError('Weiterleitung auf eine andere Domain: bitte Herstellerseite prüfen.')\n soup=BeautifulSoup(r.text,'html.parser')\n tokens=[x for x in re.split(r'[^a-z0-9]+',clean(model).lower()) if len(x)>=4]\n tokens+= [x for x in re.split(r'[^a-z0-9]+',clean(product).lower()) if len(x)>=4]\n tokens=list(dict.fromkeys(tokens))\n out=[];seen=set()\n for link in soup.find_all('a',href=True):\n  href=urljoin(r.url,link['href'])\n  dest=urlparse(href)\n  if dest.scheme!='https' or not dest.hostname or not (dest.hostname==final.hostname or dest.hostname.endswith('.'+final.hostname)): continue\n  title=clean(link.get_text(' ',strip=True))\n  blob=(title+' '+href).lower()\n  if not any(x in blob for x in ('.pdf','datenblatt','datasheet','montage','installation','zulassung','epd','leistungserklärung','declaration-of-performance','download')):continue\n  if href in seen:continue\n  seen.add(href)\n  cat=classify(title,href,'generic')\n  if cat=='Sonstiges':continue\n  match=any(x in blob for x in tokens) if tokens else False\n  pdf='.pdf' in dest.path.lower()\n  confidence=80 if match and pdf else 65 if match else 40\n  out.append({'Kategorie':cat,'Priorität':'Anwendungsfall prüfen','Titel':title or dest.path.rsplit('/',1)[-1],'Treffer %':confidence,'URL':href,'Quellseite':r.url,'Relevant':False,'Resolver':'Universeller Kandidat – manuell prüfen','Downloadbar':pdf,'Nachweis URL':''})\n  if len(out)>=60:break\n return r.url,out\n\n"
+          ui="   if not auto:\n    st.markdown('**Universelle Dokumentensuche – Pilotbetrieb**')\n    st.caption('Für noch nicht unterstützte Hersteller: Offizielle Produktseite eintragen. Gefundene Dokumente werden als ungeprüfte Kandidaten angezeigt, nicht freigegeben.')\n    _official=st.text_input('HTTPS-Adresse der offiziellen Hersteller-Produktseite',key=f'universal-url-{cid}',placeholder='https://www.hersteller.de/produkt/...')\n    if st.button('Dokumentkandidaten auf Herstellerseite suchen',key=f'universal-search-{cid}'):\n     try:\n      _source,_hits=universal_docs_from_official_page(m,p,a,_official)\n      st.session_state[f'universal-hits-{cid}']=_hits\n      st.session_state[f'universal-source-{cid}']=_source\n     except Exception as _error:st.error(str(_error))\n    _hits=st.session_state.get(f'universal-hits-{cid}',[])\n    if _hits:\n     st.warning(f'{len(_hits)} Dokumentkandidaten gefunden. Keine automatische Zuordnung oder Freigabe.')\n     st.dataframe(pd.DataFrame(_hits)[['Kategorie','Titel','Treffer %','URL']],hide_index=True,width='stretch')\n     st.caption('Trefferqualität ist eine Suchheuristik, keine bestätigte Produktzugehörigkeit. Diese Pilot-Suche speichert keine Kandidaten in die freigegebene Dokumentenmappe.')\n"
+          assert s.count('def find_docs(manufacturer,product):')==1
+          s=s.replace('def find_docs(manufacturer,product):',fn+'def find_docs(manufacturer,product):',1)
+          anchor="   auto=(product_key(m,_search_product) in PRODUCTS and conlit_name_ok) or (is_grohe_eurosmart_ce(m,p) and a in GROHE_VARIANTS) or is_geberit_verified(m,a) or is_geberit_mapress_therm(m,p)\n"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+ui,1)
+          assert s.count('**Universelle Dokumentensuche – Pilotbetrieb**')==1
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          Path('/tmp/tga162/version.json').write_text(json.dumps({'version':'1.6.2'})+'\n',encoding='utf-8')
-          print('PASS conditional questions by stored documents and AA/Z43RM; no automatic approval')
+          Path('/tmp/tga170/version.json').write_text(json.dumps({'version':'1.7.0'})+'\n',encoding='utf-8')
+          print('PASS generic pilot available for unsupported products; candidates never auto-approved')
           PY
-          (cd /tmp/tga162 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.6.2.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v1.6.2.zip
+          (cd /tmp/tga170 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v1.7.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v1.7.0.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v1.6.2.zip
-          git commit -m 'Build v1.6.2 conditional document checks'
+          git add TGA_Product_Finder_Update_v1.7.0.zip
+          git commit -m 'Build v1.7.0 universal document pilot'
           git push
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v1.6.2.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v1.7.0.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'1.6.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.6.2.zip','sha256':sha}
+          data={'version':'1.7.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v1.7.0.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v1.6.2 manifest'
+          git commit -m 'Publish v1.7.0 manifest'
           git push
