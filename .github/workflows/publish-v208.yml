@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.31 Model Recognition
+name: Publish TGA Product Finder v2.0.32 Model Recognition
 on:
   push:
     paths:
@@ -13,128 +13,155 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga231
-          unzip -q TGA_Product_Finder_Update_v2.0.30.zip -d /tmp/tga231
+          mkdir -p /tmp/tga232
+          unzip -q TGA_Product_Finder_Update_v2.0.31.zip -d /tmp/tga232
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga231/app.py')
+          p=Path('/tmp/tga232/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.30"')==1
-          s=s.replace('APP_VERSION = "2.0.30"','APP_VERSION = "2.0.31"',1)
+          assert s.count('APP_VERSION = "2.0.31"')==1
+          s=s.replace('APP_VERSION = "2.0.31"','APP_VERSION = "2.0.32"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
           new=[
-           'def search_document_focused_web(manufacturer,product,model,official_url=""):',
-           ' """Find matching official product pages from manufacturer sitemap; no guessed product assignment."""',
-           ' import requests,re,xml.etree.ElementTree as ET',
-           ' from bs4 import BeautifulSoup',
-           ' from urllib.parse import urlparse,urljoin,unquote',
-           ' manufacturer=str(manufacturer).strip();product=str(product).strip();model=str(model).strip()',
-           ' notes=[];wanted=" ".join((product+" "+model).casefold().replace("-"," ").split())',
-           ' basic_e="kermi" in manufacturer.casefold() and bool(re.search(r"basic[ -]?e(?![a-z])",wanted))',
-           ' if basic_e:notes.append("Produktabgleich: Basic-E und Basic 50 bleiben getrennt")',
-           ' official_url=str(official_url or "").strip();parsed=urlparse(official_url)',
-           ' if "kermi" in manufacturer.casefold():',
-           '  domain="www.kermi.com";roots=["https://www.kermi.com/de/de/","https://www.kermi.com/sitemap.xml"]',
-           ' elif parsed.scheme=="https" and parsed.hostname and not parsed.hostname.endswith((".local",".internal")):',
-           '  domain=parsed.hostname;roots=["https://"+domain+"/sitemap.xml"]',
-           ' else:',
-           '  return [],notes+["Produktidentifikation: Keine vertrauenswürdige Herstellerdomain bekannt"]',
-           ' if parsed.scheme=="https" and parsed.hostname==domain and official_url not in roots:roots.insert(0,official_url)',
-           ' session=requests.Session();session.headers.update({"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
-           ' def fetch(url):',
-           '  try:',
-           '   r=session.get(url,timeout=10,allow_redirects=False)',
-           '   if r.status_code==200 and len(r.content)<3000000:return r',
-           '  except requests.RequestException:pass',
-           '  return None',
-           ' candidates=[];seen=set();sitemaps=0;discovered=0',
-           ' for root in roots:',
-           '  if root.endswith(".xml"):',
-           '   todo=[root];xmlseen=set()',
-           '   while todo and sitemaps<5:',
-           '    link=todo.pop(0)',
-           '    if link in xmlseen:continue',
-           '    xmlseen.add(link);r=fetch(link)',
-           '    if r is None:continue',
-           '    try:tree=ET.fromstring(r.content)',
-           '    except ET.ParseError:continue',
-           '    sitemaps+=1',
-           '    for node in tree.iter():',
-           '     if node.tag.rsplit("}",1)[-1]!="loc" or not node.text:continue',
-           '     url=node.text.strip();p=urlparse(url)',
-           '     if p.scheme!="https" or p.hostname!=domain:continue',
-           '     if p.path.lower().endswith(".xml") and len(todo)<15:todo.append(url);continue',
-           '     if url not in seen:seen.add(url);candidates.append(url);discovered+=1',
-           '  else:',
-           '   r=fetch(root)',
-           '   if r is None or "html" not in r.headers.get("content-type","").lower():continue',
-           '   soup=BeautifulSoup(r.text,"html.parser")',
-           '   for a in soup.select("a[href]")[:1000]:',
-           '    url=urljoin(root,a.get("href",""));p=urlparse(url)',
-           '    if p.scheme=="https" and p.hostname==domain and url not in seen:seen.add(url);candidates.append(url)',
-           ' if basic_e:',
-           '  pattern=re.compile(r"basic[-_/ ]?e(?![a-z0-9])",re.I)',
-           '  ranked=[u for u in candidates if pattern.search(unquote(urlparse(u).path))]',
-           ' else:',
-           '  terms=[t for t in re.split(r"[^a-z0-9]+",model.casefold()) if len(t)>2]',
-           '  ranked=[u for u in candidates if terms and all(t in unquote(urlparse(u).path).casefold() for t in terms)]',
-           ' notes.append("Produktidentifikation: "+str(sitemaps)+" Sitemaps, "+str(discovered)+" Sitemap-URLs, "+str(len(ranked))+" Modell-URL-Kandidaten")',
-           ' validated=[]',
-           ' for url in ranked[:8]:',
-           '  r=fetch(url)',
-           '  if r is None or "html" not in r.headers.get("content-type","").lower():continue',
-           '  soup=BeautifulSoup(r.text,"html.parser");title=soup.title.get_text(" ",strip=True) if soup.title else ""',
-           '  heading=" ".join(h.get_text(" ",strip=True) for h in soup.select("h1,h2")[:5])',
-           '  evidence=title+" "+heading',
-           '  if basic_e and not re.search(r"basic\\s*[- ]?e(?![a-z0-9])",evidence,re.I):continue',
-           '  if not basic_e and not all(t in evidence.casefold() for t in terms):continue',
-           '  validated.append((url,soup))',
-           ' notes.append("Produktidentifikation: "+str(len(validated))+" Seiten mit passender Überschrift; Variantenprüfung bleibt erforderlich")',
-           ' found=[];pdfseen=set()',
-           ' for page,soup in validated:',
-           '  for a in soup.select("a[href]"):',
-           '   target=urljoin(page,a.get("href",""));p=urlparse(target)',
-           '   if p.scheme!="https" or p.hostname!=domain or not p.path.lower().endswith(".pdf"):continue',
-           '   label=a.get_text(" ",strip=True);context=(label+" "+unquote(p.path)).casefold()',
-           '   if basic_e and not re.search(r"basic\\s*[- ]?e(?![a-z0-9])",context):continue',
-           '   if target in pdfseen:continue',
-           '   pdfseen.add(target)',
-           '   found.append({"Kategorie":"Sonstiges","Titel":label or p.path.rsplit("/",1)[-1],"Treffer %":50,"URL":target,"Quellseite":page,"Relevant":False,"Priorität":"Hersteller-PDF-Kandidat; Variante prüfen"})',
-           ' notes.append("Produktidentifikation: "+str(len(found))+" ungeprüfte PDF-Kandidaten aus passenden Produktseiten")',
-           ' if not validated:notes.append("Keine bestätigte Hersteller-Produktseite; vorhandene Drittquellen bleiben unverändert")',
-           ' return found,notes',
-           '',
+           "def search_document_focused_web(manufacturer,product,model,official_url=\"\"):",
+           " \"\"\"Discover manufacturer product pages via robots, XML/GZ sitemaps and limited navigation.\"\"\"",
+           " import requests,re,gzip,xml.etree.ElementTree as ET",
+           " from bs4 import BeautifulSoup",
+           " from urllib.parse import urlparse,urljoin,unquote",
+           " from collections import deque",
+           " manufacturer=str(manufacturer).strip();product=str(product).strip();model=str(model).strip()",
+           " basic_e=\"kermi\" in manufacturer.casefold() and bool(re.search(r\"basic[ -]?e(?![a-z])\",(product+\" \"+model).casefold()))",
+           " notes=[]",
+           " if basic_e:notes.append(\"Produktabgleich: Basic-E und Basic 50 bleiben getrennt\")",
+           " parsed=urlparse(str(official_url or \"\"))",
+           " if \"kermi\" in manufacturer.casefold():domain=\"www.kermi.com\"",
+           " elif parsed.scheme==\"https\" and parsed.hostname and re.fullmatch(r\"[a-z0-9.-]+\",parsed.hostname) and not parsed.hostname.endswith((\".local\",\".internal\")):domain=parsed.hostname",
+           " else:return [],notes+[\"Produktidentifikation: Keine verifizierbare Herstellerdomain vorhanden\"]",
+           " base=\"https://\"+domain",
+           " session=requests.Session();session.headers.update({\"User-Agent\":\"Mozilla/5.0 (compatible; TGAProductFinder/2.0)\"})",
+           " attempts=[];errors=[];xml_count=0;discovered=0",
+           " def fetch(url):",
+           "  p=urlparse(url)",
+           "  if p.scheme!=\"https\" or p.hostname!=domain:return None",
+           "  try:",
+           "   r=session.get(url,timeout=9,allow_redirects=False,stream=True)",
+           "   attempts.append(str(r.status_code)+\" \"+p.path[:90])",
+           "   if r.status_code!=200:return None",
+           "   size=0;chunks=[]",
+           "   for chunk in r.iter_content(65536):",
+           "    size+=len(chunk)",
+           "    if size>2500000:errors.append(\"Antwort zu groß: \"+p.path[:70]);return None",
+           "    chunks.append(chunk)",
+           "   r._content=b\"\".join(chunks)",
+           "   return r",
+           "  except requests.RequestException as exc:",
+           "   errors.append(type(exc).__name__+\" \"+p.path[:70]);return None",
+           "  finally:",
+           "   try:r.close()",
+           "   except UnboundLocalError:pass",
+           " candidates=[];seen_urls=set()",
+           " def add(url):",
+           "  p=urlparse(url)",
+           "  if p.scheme==\"https\" and p.hostname==domain and url not in seen_urls:",
+           "   seen_urls.add(url);candidates.append(url)",
+           " sitemap_queue=deque([base+\"/sitemap.xml\",base+\"/sitemap_index.xml\"])",
+           " robots=fetch(base+\"/robots.txt\")",
+           " if robots is not None:",
+           "  for line in robots.text.splitlines():",
+           "   if line.lower().lstrip().startswith(\"sitemap:\"):",
+           "    u=line.split(\":\",1)[1].strip()",
+           "    if urlparse(u).scheme==\"https\" and urlparse(u).hostname==domain:sitemap_queue.appendleft(u)",
+           " visited_xml=set()",
+           " while sitemap_queue and xml_count<8:",
+           "  url=sitemap_queue.popleft()",
+           "  if url in visited_xml:continue",
+           "  visited_xml.add(url);r=fetch(url)",
+           "  if r is None:continue",
+           "  payload=r.content",
+           "  if urlparse(url).path.endswith(\".gz\") or payload[:2]==b\"\\x1f\\x8b\":",
+           "   try:payload=gzip.decompress(payload)",
+           "   except (OSError,EOFError):errors.append(\"GZIP ungültig: \"+urlparse(url).path[:70]);continue",
+           "  if len(payload)>12000000:errors.append(\"XML zu groß: \"+urlparse(url).path[:70]);continue",
+           "  try:tree=ET.fromstring(payload)",
+           "  except ET.ParseError:errors.append(\"XML ungültig: \"+urlparse(url).path[:70]);continue",
+           "  xml_count+=1",
+           "  for node in tree.iter():",
+           "   if node.tag.rsplit(\"}\",1)[-1]!=\"loc\" or not node.text:continue",
+           "   link=node.text.strip();p=urlparse(link)",
+           "   if p.scheme!=\"https\" or p.hostname!=domain:continue",
+           "   if p.path.lower().endswith((\".xml\",\".xml.gz\")):",
+           "    if len(sitemap_queue)<30:sitemap_queue.append(link)",
+           "   else:add(link);discovered+=1",
+           " nav=0",
+           " if not candidates:",
+           "  for root in ([str(official_url)] if parsed.scheme==\"https\" and parsed.hostname==domain else [])+[base+\"/de/de/\"]:",
+           "   r=fetch(root)",
+           "   if r is None or \"html\" not in r.headers.get(\"content-type\",\"\").lower():continue",
+           "   nav+=1;soup=BeautifulSoup(r.text,\"html.parser\")",
+           "   for a in soup.select(\"a[href]\")[:1500]:",
+           "    target=urljoin(root,a.get(\"href\",\"\"));p=urlparse(target)",
+           "    if p.hostname==domain and p.scheme==\"https\":add(target)",
+           " pattern=re.compile(r\"basic[-_/ ]?e(?![a-z0-9])\",re.I)",
+           " terms=[t for t in re.split(r\"[^a-z0-9]+\",model.casefold()) if len(t)>2]",
+           " ranked=[u for u in candidates if (pattern.search(unquote(urlparse(u).path)) if basic_e else bool(terms and all(t in unquote(urlparse(u).path).casefold() for t in terms)))]",
+           " notes.append(\"Sitemap-Diagnose: \"+str(xml_count)+\" XML-Sitemaps, \"+str(discovered)+\" Sitemap-URLs, \"+str(nav)+\" Navigations-Startseiten, \"+str(len(ranked))+\" Modell-URL-Kandidaten\")",
+           " notes.append(\"Sitemap-Abrufe: \"+\"; \".join(attempts[:12]))",
+           " if errors:notes.append(\"Sitemap-Fehler: \"+\"; \".join(errors[:5]))",
+           " validated=[]",
+           " for url in ranked[:8]:",
+           "  r=fetch(url)",
+           "  if r is None or \"html\" not in r.headers.get(\"content-type\",\"\").lower():continue",
+           "  soup=BeautifulSoup(r.text,\"html.parser\")",
+           "  title=soup.title.get_text(\" \",strip=True) if soup.title else \"\"",
+           "  heading=\" \".join(h.get_text(\" \",strip=True) for h in soup.select(\"h1,h2\")[:5])",
+           "  evidence=title+\" \"+heading",
+           "  if basic_e and not re.search(r\"basic\\s*[- ]?e(?![a-z0-9])\",evidence,re.I):continue",
+           "  if not basic_e and not all(t in evidence.casefold() for t in terms):continue",
+           "  validated.append((url,soup))",
+           " found=[];seen=set()",
+           " for page,soup in validated:",
+           "  for a in soup.select(\"a[href]\"):",
+           "   target=urljoin(page,a.get(\"href\",\"\"));p=urlparse(target)",
+           "   if p.scheme!=\"https\" or p.hostname!=domain or not p.path.lower().endswith(\".pdf\"):continue",
+           "   label=a.get_text(\" \",strip=True);context=(label+\" \"+unquote(p.path)).casefold()",
+           "   if basic_e and not pattern.search(context):continue",
+           "   if target in seen:continue",
+           "   seen.add(target)",
+           "   found.append({\"Kategorie\":\"Sonstiges\",\"Titel\":label or p.path.rsplit(\"/\",1)[-1],\"Treffer %\":50,\"URL\":target,\"Quellseite\":page,\"Relevant\":False,\"Priorität\":\"Hersteller-PDF-Kandidat; Variante prüfen\"})",
+           " notes.append(\"Produktidentifikation: \"+str(len(validated))+\" passende Produktseiten, \"+str(len(found))+\" ungeprüfte PDF-Kandidaten\")",
+           " if not validated:notes.append(\"Keine bestätigte Hersteller-Produktseite; vorhandene Drittquellen bleiben unverändert\")",
+           " return found,notes",
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
           ast.parse(s)
-          print('PASS: manufacturer sitemap discovery, model-specific title verification and conservative document assignment')
+          print('PASS: robots.txt sitemap discovery, XML/GZ parsing, bounded navigation and diagnostics')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga231/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga232/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga231 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.31.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.31.zip
+          (cd /tmp/tga232 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.32.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.32.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.31.zip
-          git commit -m 'Build TGA Product Finder v2.0.31'
+          git add TGA_Product_Finder_Update_v2.0.32.zip
+          git commit -m 'Build TGA Product Finder v2.0.32'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.31.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.32.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.31','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.31.zip','sha256':sha}
+          data={'version':'2.0.32','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.32.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.31 update manifest'
+          git commit -m 'Publish v2.0.32 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
