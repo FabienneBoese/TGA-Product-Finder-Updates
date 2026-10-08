@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.0.26 Model Recognition
+name: Publish TGA Product Finder v2.0.27 Model Recognition
 on:
   push:
     paths:
@@ -13,104 +13,100 @@ jobs:
       - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/tga226
-          unzip -q TGA_Product_Finder_Update_v2.0.25.zip -d /tmp/tga226
+          mkdir -p /tmp/tga227
+          unzip -q TGA_Product_Finder_Update_v2.0.26.zip -d /tmp/tga227
           python3 - <<'PY'
           from pathlib import Path
           import py_compile
-          p=Path('/tmp/tga226/app.py')
+          p=Path('/tmp/tga227/app.py')
           s=p.read_text(encoding='utf-8')
-          assert s.count('APP_VERSION = "2.0.25"')==1
-          s=s.replace('APP_VERSION = "2.0.25"','APP_VERSION = "2.0.26"',1)
+          assert s.count('APP_VERSION = "2.0.26"')==1
+          s=s.replace('APP_VERSION = "2.0.26"','APP_VERSION = "2.0.27"',1)
           import ast
           start=s.index('def search_document_focused_web(')
           end=s.index('def multistage_document_candidates(',start)
           new=[
-           'def search_document_focused_web(manufacturer,product,model):',
-           ' """Compare two public HTML search sources, record document pages separately from PDFs."""',
-           ' import requests,html',
+           'def search_document_focused_web(manufacturer,product,model,official_url=""):',
+           ' """Bounded same-host document crawler; no public search-engine scraping."""',
+           ' import requests,re',
            ' from bs4 import BeautifulSoup',
-           ' from urllib.parse import urlparse,parse_qs,unquote',
-           ' patterns=universal_product_search_patterns(manufacturer,product,model)',
-           ' phrases=[p for p in patterns if p["Suchmuster"] in ("Datenblatt","Montageanleitung","Leistungserklärung","Zulassung","EPD")]',
-           ' candidates=[];notes=[];seen=set()',
-           ' providers=[("Google (experimentell)","https://www.google.com/search"),("DuckDuckGo HTML (experimentell)","https://html.duckduckgo.com/html/")]',
-           ' for pattern in phrases:',
-           '  term=pattern["Suchbegriff"];category=pattern["Suchmuster"]',
-           '  for provider,endpoint in providers:',
-           '   stats={"links":0,"pdf":0,"identity":0,"accepted":0,"pages":0}',
-           '   try:',
-           '    params={"q":term+" filetype:pdf"}',
-           '    if "google.com" in endpoint:params["num"]="8"',
-           '    response=requests.get(endpoint,params=params,timeout=12,headers={"User-Agent":"Mozilla/5.0"})',
-           '    if response.status_code in (403,429):',
-           '     notes.append(category+": "+provider+" blockiert (HTTP "+str(response.status_code)+")");continue',
-           '    response.raise_for_status()',
-           '    if "text/html" not in response.headers.get("content-type","").lower():',
-           '     notes.append(category+": "+provider+" liefert kein HTML");continue',
-           '    soup=BeautifulSoup(response.text,"html.parser")',
-           '    if soup.find(string=lambda v:bool(v and ("unusual traffic" in v.lower() or "captcha" in v.lower()))):',
-           '     notes.append(category+": "+provider+" verlangt Bot-Prüfung");continue',
-           '    selector="a.result__a[href]" if "duckduckgo.com" in endpoint else "a[href]"',
-           '    for anchor in soup.select(selector):',
-           '     stats["links"]+=1',
-           '     link=html.unescape(anchor.get("href",""))',
-           '     if link.startswith("/url?"):link=parse_qs(urlparse(link).query).get("q",[""])[0]',
-           '     if link.startswith("//"):link="https:"+link',
-           '     parsed=urlparse(link)',
-           '     if parsed.hostname and parsed.hostname.endswith("duckduckgo.com"):link=parse_qs(parsed.query).get("uddg",[link])[0];parsed=urlparse(link)',
-           '     if parsed.scheme!="https" or not parsed.hostname:continue',
-           '     if parsed.hostname.lower().endswith(("google.com","duckduckgo.com")):continue',
-           '     title=anchor.get_text(" ",strip=True) or parsed.path.rsplit("/",1)[-1]',
-           '     context=(title+" "+unquote(parsed.path)).casefold()',
-           '     name=str(manufacturer).casefold().strip(); identity=str(model).casefold().strip()',
-           '     if not name or name not in context or not identity or identity not in context:continue',
-           '     stats["identity"]+=1',
-           '     if not parsed.path.lower().endswith(".pdf"):',
-           '      stats["pages"]+=1;continue',
-           '     stats["pdf"]+=1',
-           '     if link in seen:continue',
-           '     seen.add(link);stats["accepted"]+=1',
-           '     kind={"Datenblatt":"Produktdatenblatt","Montageanleitung":"Montage & Betrieb – Hauptanleitung","Leistungserklärung":"Leistungserklärung (DoP)","Zulassung":"Zulassung/Prüfzeugnis","EPD":"EPD/DGNB/Umwelt"}[category]',
-           '     candidates.append({"Kategorie":kind,"Titel":title,"Treffer %":60,"URL":link,"Quellseite":response.url,"Relevant":False,"Priorität":"Suchtreffer; Quelle und Ausführung prüfen"})',
-           '     if stats["accepted"]>=5:break',
-           '    notes.append(category+": "+provider+" – "+str(stats["links"])+" Links, "+str(stats["identity"])+" produktbezogen, "+str(stats["pages"])+" Dokumentseiten, "+str(stats["pdf"])+" PDF-Links, "+str(stats["accepted"])+" übernommen")',
-           '   except requests.RequestException as exc:notes.append(category+": "+provider+" nicht erreichbar ("+str(exc)[:85]+")")',
-           ' return candidates,notes',
+           ' from urllib.parse import urlparse,urljoin,unquote',
+           ' from collections import deque',
+           ' manufacturer=str(manufacturer).strip();model=str(model).strip()',
+           ' seeds=[]',
+           ' if "kermi" in manufacturer.casefold():seeds.append("https://www.kermi.com/de/de/produkte/bad-und-wohnheizkoerper/basic-50/")',
+           ' if official_url and urlparse(str(official_url)).scheme=="https":seeds.insert(0,str(official_url))',
+           ' if not seeds:return [],["Dokumenten-Crawler: Keine geprüfte Hersteller-Startseite vorhanden"]',
+           ' found=[];notes=[];seen_urls=set();seen_pdfs=set();queue=deque((url,0) for url in seeds)',
+           ' session=requests.Session();session.headers.update({"User-Agent":"Mozilla/5.0 (compatible; TGAProductFinder/2.0)"})',
+           ' allowed={urlparse(url).hostname for url in seeds}',
+           ' pages=0;links=0;rejected=0',
+           ' while queue and pages<8 and links<250:',
+           '  page,depth=queue.popleft()',
+           '  if page in seen_urls:continue',
+           '  seen_urls.add(page)',
+           '  try:',
+           '   response=session.get(page,timeout=12,allow_redirects=False)',
+           '   if response.status_code!=200 or "text/html" not in response.headers.get("content-type","").lower():continue',
+           '   pages+=1;soup=BeautifulSoup(response.text,"html.parser")',
+           '   for anchor in soup.select("a[href]"):',
+           '    links+=1',
+           '    if links>250:break',
+           '    target=urljoin(page,anchor.get("href",""));parsed=urlparse(target)',
+           '    if parsed.scheme!="https" or parsed.hostname not in allowed:continue',
+           '    label=anchor.get_text(" ",strip=True);context=(label+" "+unquote(parsed.path)).casefold()',
+           '    tokens=[t for t in re.split(r"[^a-z0-9]+",(str(product)+" "+model).casefold()) if len(t)>3]',
+           '    related=bool(tokens and any(t in context for t in tokens))',
+           '    if parsed.path.lower().endswith(".pdf"):',
+           '     if not related:rejected+=1;continue',
+           '     if target in seen_pdfs:continue',
+           '     seen_pdfs.add(target)',
+           '     found.append({"Kategorie":"Sonstiges","Titel":label or parsed.path.rsplit("/",1)[-1],"Treffer %":55,"URL":target,"Quellseite":page,"Relevant":False,"Priorität":"Hersteller-PDF-Kandidat; Ausführung prüfen"})',
+           '    elif depth<2 and related and target not in seen_urls and len(queue)<30:queue.append((target,depth+1))',
+           '  except requests.RequestException as exc:notes.append("Crawler-Seite nicht erreichbar: "+str(exc)[:95])',
+           ' notes.append("Dokumenten-Crawler: "+str(pages)+" Herstellerseiten, "+str(links)+" Links, "+str(len(found))+" PDF-Kandidaten, "+str(rejected)+" thematisch verworfene PDFs")',
+           ' notes.append("Crawler: Nur Hersteller-Domain, maximal 8 Seiten und 250 Links; keine automatische Freigabe")',
+           ' return found,notes',
            '',
           ]
           s=s[:start]+'\n'.join(new)+'\n'+s[end:]
+          start=s.index('def multistage_document_candidates(')
+          end=s.index('def document_source_policy(',start)
+          block=s[start:end]
+          old='search_document_focused_web(manufacturer,product,model)'
+          assert block.count(old)==1
+          block=block.replace(old,'search_document_focused_web(manufacturer,product,model,official_url)',1)
+          s=s[:start]+block+s[end:]
           ast.parse(s)
           namespace={}
           exec('\n'.join(new),namespace)
           assert callable(namespace['search_document_focused_web'])
-          assert 'DuckDuckGo HTML (experimentell)' in s
-          assert 'Dokumentseiten' in s
-          print('PASS: second provider, DuckDuckGo redirect parsing, product-page counters, no automatic approval')
+          assert 'maximal 8 Seiten und 250 Links' in s
+          print('PASS: bounded same-host crawler, strict redirects, product filtering, existing source policy unchanged')
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
-          assert Path('/tmp/tga226/TGA_Updater.ps1').exists()
+          assert Path('/tmp/tga227/TGA_Updater.ps1').exists()
           print('PASS: Python syntax and updater present')
           PY
-          (cd /tmp/tga226 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.26.zip" app.py version.json TGA_Updater.ps1)
-          unzip -t TGA_Product_Finder_Update_v2.0.26.zip
+          (cd /tmp/tga227 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.0.27.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.0.27.zip
           git config user.name 'TGA Update Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add TGA_Product_Finder_Update_v2.0.26.zip
-          git commit -m 'Build TGA Product Finder v2.0.26'
+          git add TGA_Product_Finder_Update_v2.0.27.zip
+          git commit -m 'Build TGA Product Finder v2.0.27'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
           PACKAGE_COMMIT=$(git rev-parse HEAD)
-          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.26.zip | awk '{print $1}')
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.0.27.zip | awk '{print $1}')
           python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
           import json,sys
           sha,commit=sys.argv[1:]
-          data={'version':'2.0.26','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.26.zip','sha256':sha}
+          data={'version':'2.0.27','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.0.27.zip','sha256':sha}
           open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
           PY
           git add update_manifest.json
-          git commit -m 'Publish v2.0.26 update manifest'
+          git commit -m 'Publish v2.0.27 update manifest'
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
