@@ -23,7 +23,9 @@ jobs:
           anchor="            st.dataframe(_ident_rows,hide_index=True,width='stretch',height=max(250,min(900,38*(len(_ident_rows)+1))))"
           assert s.count('st.dataframe(_ident_rows')==1
           s=s.replace("             _ident_rows.append({'ID':_cid","             _ident_rows.append({'Erkennungsquelle':'Bestandsdaten / explizites Feld' if _article else ('Typ-/Modellfeld' if _model else 'Produktbezeichnung'),'ID':_cid",1)
-          s=s.replace(next(line for line in s.splitlines() if 'st.dataframe(_ident_rows' in line),next(line for line in s.splitlines() if 'st.dataframe(_ident_rows' in line)+"\n            st.download_button('Diagnose als CSV exportieren',data=__import__('csv').writer if False else _ident_csv(_ident_rows),file_name='TGA_Produkterkennung_Diagnose.csv',mime='text/csv')",1)
+          line=next(line for line in s.splitlines() if 'st.dataframe(_ident_rows' in line)
+          indent=line[:len(line)-len(line.lstrip())]
+          s=s.replace(line,line+"\\n"+indent+"st.download_button('Diagnose als CSV exportieren',data=_ident_csv(_ident_rows),file_name='TGA_Produkterkennung_Diagnose.csv',mime='text/csv')",1)
           helper="""def _ident_csv(rows):
               import csv,io
               f=io.StringIO()
