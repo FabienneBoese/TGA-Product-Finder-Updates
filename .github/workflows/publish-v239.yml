@@ -44,6 +44,7 @@ jobs:
           # Run recovery on existing projects in the overview, not just during imports.
           needle="  rows=con.execute(\"SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id\",(project,)).fetchall()"
           matches=[line for line in s.splitlines() if 'rows=con.execute' in line and 'SELECT id,manufacturer,product,article_no,confidence,status,docs_searched' in line]
+          matches=[line for line in matches if line.lstrip().startswith('rows=')]
           assert len(matches)==1,matches
           needle=matches[0]
           enrichment=chr(10).join([
