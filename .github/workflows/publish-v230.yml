@@ -59,17 +59,8 @@ jobs:
           # or changing existing user-entered values.
           anchor=next(line for line in s.splitlines() if "_scope_category=st.text_input(" in line)
           assert s.count(anchor)==1
-          helper="""           _product_text=str(_scope_item[2] or '')
-           _suggested_category=next((term for term in ('Systemrohr','Schiebemuffe','Muffe','Bogen','T-Stück','Reduzierung') if term.casefold() in _product_text.casefold()),'')
-           _dimension_tokens=re.findall(r'(?<![A-Za-z0-9])(?:DN\\s*)?(?:12|15|16|18|20|22|25|28|32|35|40|42|50|54|63|65|76|88|100|108)(?![A-Za-z0-9])',_product_text,re.I)
-           _suggested_dimensions=', '.join(dict.fromkeys(re.sub(r'(?i)^DN\\s*','',v) for v in _dimension_tokens))
-           if _suggested_category or _suggested_dimensions:
-            st.caption('Vorschlag aus Produktbezeichnung (bitte vor dem Speichern prüfen): '+(_suggested_category or 'Bauteilart offen')+' | '+(_suggested_dimensions or 'Dimension offen'))
-          """
-          import textwrap
-          _hl=helper.splitlines()
-          _hbase=len(_hl[0])-len(_hl[0].lstrip())
-          helper='\n'.join(anchor[:len(anchor)-len(anchor.lstrip())]+line[_hbase:] for line in _hl)+'\n'
+          helper_lines=["_product_text=str(_scope_item[2] or '')","_suggested_category=next((term for term in ('Systemrohr','Schiebemuffe','Muffe','Bogen','T-Stück','Reduzierung') if term.casefold() in _product_text.casefold()),'')","_dimension_tokens=re.findall(r'(?<![A-Za-z0-9])(?:DN\\s*)?(?:12|15|16|18|20|22|25|28|32|35|40|42|50|54|63|65|76|88|100|108)(?![A-Za-z0-9])',_product_text,re.I)","_suggested_dimensions=', '.join(dict.fromkeys(re.sub(r'(?i)^DN\\s*','',v) for v in _dimension_tokens))","if _suggested_category or _suggested_dimensions:"," st.caption('Vorschlag aus Produktbezeichnung (bitte vor dem Speichern prüfen): '+(_suggested_category or 'Bauteilart offen')+' | '+(_suggested_dimensions or 'Dimension offen'))"]
+          helper='\n'.join(anchor[:len(anchor)-len(anchor.lstrip())]+line for line in helper_lines)+'\n'
           s=s.replace(anchor,helper+anchor,1)
           s=s.replace("value=_scope_item[5] or '',key=f'doc_scope_category_{_scope_id}'","value=_scope_item[5] or _suggested_category,key=f'doc_scope_category_{_scope_id}'",1)
           s=s.replace("value=_scope_item[6] or '',key=f'doc_scope_dimensions_{_scope_id}'","value=_scope_item[6] or _suggested_dimensions,key=f'doc_scope_dimensions_{_scope_id}'",1)
