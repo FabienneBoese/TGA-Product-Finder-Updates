@@ -53,7 +53,7 @@ jobs:
            '  con.commit()',
            ''
           ])
-          s=s.replace(anchor,block+chr(10)+anchor,1)
+          s=s.replace(anchor,chr(10).join(line[1:] for line in block.splitlines())+chr(10)+anchor,1)
           display="overview.append({'Status':"
           assert s.count(display)==1
           s=s.replace(display,"_identity=infer_product_identity(om,op,_model,oa)"+chr(10)+"    "+display,1)
