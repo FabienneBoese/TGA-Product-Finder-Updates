@@ -1,0 +1,115 @@
+name: Publish TGA Product Finder v2.3.0 Generic Recognition Test
+on:
+  push:
+    paths: ['.github/workflows/publish-v230.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga230
+          unzip -q TGA_Product_Finder_Update_v2.2.9.zip -d /tmp/tga230
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,re
+          p=Path('/tmp/tga230/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.2.9"')==1
+          s=s.replace('APP_VERSION = "2.2.9"','APP_VERSION = "2.3.0"',1)
+          import ast,re
+          # Enable direct row selection in the documentation overview.
+          tree=ast.parse(s)
+          nodes=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='dataframe' and any(isinstance(arg,ast.Name) and arg.id=='ovdf' for arg in n.args)]
+          assert len(nodes)==1
+          old=ast.get_source_segment(s,nodes[0])
+          assert old and 'on_select=' not in old
+          new=old[:-1]+", on_select='rerun', selection_mode='single-row', key='doc_overview_selection')"
+          s=s.replace(old,new,1)
+          # Row selection controls the editor without losing the dropdown fallback.
+          old="_scope_label=st.selectbox('Produkt oder Produktfamilie auswählen',list(_scope_map),key='doc_scope_component')"
+          assert s.count(old)==1
+          replacement="""_selected_index=None
+           try:
+            _selected_rows=st.session_state.get('doc_overview_selection',{}).get('selection',{}).get('rows',[])
+            if _selected_rows:
+             _selected_index=int(_selected_rows[0])
+           except (TypeError,ValueError,AttributeError,IndexError):
+            pass
+           _scope_labels=list(_scope_map)
+           _selected_label=None
+           if _selected_index is not None and 0<=_selected_index<len(rows):
+            _selected_id=rows[_selected_index][0]
+            _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)
+           _scope_label=st.selectbox('Produkt oder Produktfamilie auswählen',_scope_labels,index=_scope_labels.index(_selected_label) if _selected_label in _scope_labels else 0,key='doc_scope_component')
+          """
+          # Remove existing selectbox key to permit selection changes on rerun.
+          replacement=replacement.replace(",key='doc_scope_component')",")")
+          s=s.replace(old,replacement,1)
+          # Suggest category and dimensions from the designation, without auto-saving
+          # or changing existing user-entered values.
+          anchor="           _scope_category=st.text_input("
+          assert s.count(anchor)==1
+          helper="""           _product_text=str(_scope_item[2] or '')
+           _suggested_category=next((term for term in ('Systemrohr','Schiebemuffe','Muffe','Bogen','T-Stück','Reduzierung') if term.casefold() in _product_text.casefold()),'')
+           _dimension_tokens=re.findall(r'(?<![A-Za-z0-9])(?:DN\\s*)?(?:12|15|16|18|20|22|25|28|32|35|40|42|50|54|63|65|76|88|100|108)(?![A-Za-z0-9])',_product_text,re.I)
+           _suggested_dimensions=', '.join(dict.fromkeys(re.sub(r'(?i)^DN\\s*','',v) for v in _dimension_tokens))
+           if _suggested_category or _suggested_dimensions:
+            st.caption('Vorschlag aus Produktbezeichnung (bitte vor dem Speichern prüfen): '+(_suggested_category or 'Bauteilart offen')+' | '+(_suggested_dimensions or 'Dimension offen'))
+          """
+          s=s.replace(anchor,helper+anchor,1)
+          s=s.replace("value=_scope_item[5] or '',key=f'doc_scope_category_{_scope_id}'","value=_scope_item[5] or _suggested_category,key=f'doc_scope_category_{_scope_id}'",1)
+          s=s.replace("value=_scope_item[6] or '',key=f'doc_scope_dimensions_{_scope_id}'","value=_scope_item[6] or _suggested_dimensions,key=f'doc_scope_dimensions_{_scope_id}'",1)
+          ast.parse(s)
+          assert "selection_mode='single-row'" in s
+          assert 'Vorschlag aus Produktbezeichnung' in s
+          print('PASS: row selection and cautious category/dimension suggestions')
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          assert 'doc_overview_selection' in s
+          assert 'dimensions_grouped' in s
+          print('PASS: selection linked to persistent documentation scope')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/tga230/version.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          d['version']='2.3.0'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q --disable-pip-version-check streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          import os
+          os.chdir('/tmp/tga230')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga230 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.0.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.0.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.0.zip
+          git commit -m 'Build v2.3.0 recognition integrity'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.0.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.0','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.0.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.0 manifest'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
