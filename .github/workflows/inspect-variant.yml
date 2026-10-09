@@ -1,0 +1,12 @@
+name: Inspect variant integration
+on:
+  push:
+    paths: ['.github/workflows/inspect-variant.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.3.12.zip app.py > /tmp/app.py
+          grep -n -E 'Dokumentationsumfang|doc_active_component|documentation_scope|_selected_cid|ocid|_scope_label' /tmp/app.py | tail -55
