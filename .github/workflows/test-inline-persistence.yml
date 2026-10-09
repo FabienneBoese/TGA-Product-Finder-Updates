@@ -19,6 +19,13 @@ jobs:
           env=os.environ.copy();env['TGA_DATA_DIR']='/tmp/tga_ui_data'
           p=subprocess.Popen(['python3','-m','streamlit','run','/tmp/app/app.py','--server.headless=true','--server.port=8501','--server.address=127.0.0.1'],env=env,stdout=open('/tmp/server.log','w'),stderr=subprocess.STDOUT)
           try:
+           import urllib.request
+           for attempt in range(50):
+            try:
+             urllib.request.urlopen('http://127.0.0.1:8501',timeout=2)
+             break
+            except Exception:time.sleep(1)
+           else:raise RuntimeError(open('/tmp/server.log').read()[-4000:])
            with sync_playwright() as pw:
             browser=pw.chromium.launch(headless=True,args=['--no-sandbox'])
             page=browser.new_page(viewport={'width':1600,'height':1000})
