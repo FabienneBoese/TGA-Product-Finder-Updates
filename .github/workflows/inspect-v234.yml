@@ -1,0 +1,18 @@
+name: Inspect v234 app structure
+on:
+  push:
+    paths: ['.github/workflows/inspect-v234.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.3.4.zip app.py > /tmp/tga_app.py
+          python3 - <<'PY'
+          s=open('/tmp/tga_app.py').read().splitlines()
+          for i,line in enumerate(s):
+           if any(t in line for t in ('_tga_page==','Dokumentationsumfang festlegen','overview=[]','doc_overview_selection','_helios_rows','rows=con.execute','ovdf=','st.dataframe(ovdf','_scope_label=','_scope_item=','_scope_id=','CREATE TABLE IF NOT EXISTS components','article_no','_scope_rows=','_selected_id=')):
+            if 'article_no' in line and not any(t in line for t in ('SELECT','UPDATE','CREATE','Artikelnummer')): continue
+            print(str(i+1)+': '+line[:260])
+          PY
