@@ -41,6 +41,16 @@ jobs:
              grid.click(position={'x':200,'y':58},timeout=10000)
              page.keyboard.press('Control+End')
              page.keyboard.press('Enter')
+             if not page.locator('[role="option"]').count():
+              page.keyboard.press('Escape')
+              grid.click(position={'x':200,'y':58},timeout=10000)
+              page.keyboard.press('End')
+              page.keyboard.press('Enter')
+             if not page.locator('[role="option"]').count():
+              page.keyboard.press('Escape')
+              grid.click(position={'x':200,'y':58},timeout=10000)
+              for _ in range(25):page.keyboard.press('ArrowRight')
+              page.keyboard.press('Enter')
              print('OPTIONS',maker,page.locator('[role="option"]').all_text_contents(),flush=True)
              page.get_by_role('option',name=variant,exact=True).click(timeout=8000)
              page.wait_for_timeout(1300)
