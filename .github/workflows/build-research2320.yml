@@ -1,0 +1,118 @@
+name: Build article research 2320
+on:
+  push:
+    paths: ['.github/workflows/build-research2320.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.19.zip -d /tmp/tga
+          cat > /tmp/build2320.py <<'PY'
+          from pathlib import Path
+          import ast,json,textwrap
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text()
+          assert s.count("APP_VERSION = \"2.3.19\"")==1
+          s=s.replace('APP_VERSION = "2.3.19"','APP_VERSION = "2.3.20"',1)
+          needle="st.download_button('Diagnose als CSV exportieren'"
+          assert s.count(needle)==1
+          line=next(x for x in s.splitlines() if needle in x)
+          indent=line[:len(line)-len(line.lstrip())]
+          ui=textwrap.dedent("""
+          st.divider()
+          st.markdown('**Artikelnummer anhand der Produktdaten recherchieren**')
+          st.caption('Recherche auf Hersteller-Webseiten; Treffer sind Vorschläge, keine bestätigten Artikelnummern. Die Projektdaten bleiben unverändert.')
+          _options={str(r['ID']):str(r['ID'])+' · '+str(r['Hersteller'])+' · '+str(r['Produktfamilie']) for r in _ident_rows}
+          if _options:
+           _chosen=st.selectbox('Komponente für Artikelrecherche',list(_options),format_func=lambda k:_options[k],key='universal_article_research_select')
+           if st.button('Herstellerquellen recherchieren',key='universal_article_research_button'):
+            _entry=next(r for r in _ident_rows if str(r['ID'])==_chosen)
+            _q=' '.join(str(_entry.get(k) or '') for k in ('Hersteller','Produktfamilie','Typ / Modell','Dimension')).strip()
+            _maker=str(_entry.get('Hersteller') or '').strip()
+            if not _maker:
+             st.warning('Hersteller fehlt: bitte zunächst Hersteller zuordnen.')
+            else:
+             with st.spinner('Suche nach Herstellerquellen …'):
+              _hits,_err=_tga_find_manufacturer_sources(_maker,_q)
+             if _err: st.info(_err)
+             if _hits:
+              for _h in _hits:
+               st.markdown('['+_h['title'].replace('[','').replace(']','')+']('+_h['url']+')')
+               st.caption('Herstellerquelle – Artikelnummer und Ausführung manuell abgleichen')
+             else:
+              st.info('Keine eindeutig zuordenbaren Herstellerseiten gefunden. Bitte Suchbegriffe prüfen.')
+             st.link_button('Weitere Websuche öffnen','https://www.google.com/search?q='+__import__('urllib.parse',fromlist=['quote']).quote(_q+' site:'+_tga_maker_domain(_maker)) if _tga_maker_domain(_maker) else 'https://www.google.com/search?q='+__import__('urllib.parse',fromlist=['quote']).quote(_q))
+          """).strip('
+          ')
+          s=s.replace(line,line+'\n'+'\n'.join(indent+x if x else '' for x in ui.splitlines()),1)
+          helpers=textwrap.dedent("""
+          def _tga_maker_domain(maker):
+           import re
+           known={'trox':'trox.de','geberit':'geberit.de','grohe':'grohe.de','rockwool':'rockwool.com','helios':'heliosventilatoren.de','clage':'clage.de','viega':'viega.de','reflex':'reflex-winkelmann.com','wika':'wika.com','imi':'imi-hydronic.com'}
+           low=str(maker or '').casefold()
+           return next((domain for name,domain in known.items() if name in low),'')
+          
+          def _tga_find_manufacturer_sources(maker,query):
+           import requests
+           from bs4 import BeautifulSoup
+           from urllib.parse import urlparse,parse_qs,unquote
+           domain=_tga_maker_domain(maker)
+           if not domain:
+            return [],'Für diesen Hersteller ist noch keine offizielle Web-Domain hinterlegt. Bitte die Herstellerquelle manuell prüfen.'
+           try:
+            response=requests.get('https://www.google.com/search',params={'q':query+' site:'+domain},headers={'User-Agent':'Mozilla/5.0'},timeout=8)
+            response.raise_for_status()
+            soup=BeautifulSoup(response.text,'html.parser')
+            hits=[];seen=set()
+            for a in soup.find_all('a',href=True):
+             href=a['href']
+             if href.startswith('/url?'): href=parse_qs(urlparse(href).query).get('q',[''])[0]
+             if not href.startswith(('http://','https://')):continue
+             host=(urlparse(href).hostname or '').lower()
+             if host!=domain and not host.endswith('.'+domain):continue
+             if href in seen:continue
+             title=a.get_text(' ',strip=True)
+             if len(title)<12:continue
+             seen.add(href)
+             hits.append({'title':title[:160],'url':href})
+             if len(hits)>=6:break
+            return hits,None
+           except requests.RequestException:
+            return [],'Herstellerrecherche derzeit nicht erreichbar. Die lokale Produktliste bleibt unverändert.'
+          """)
+          s=helpers+'\n'+s
+          ast.parse(s);p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.20';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          
+          PY
+          python3 /tmp/build2320.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          for maker,prod,model in [('Helios','Ventilatorbox','SB 125 A'),('Geberit','Mapress Therm',''),('Beispielhersteller','Pumpe','Typ X')]:
+           c.execute("INSERT INTO components(project,manufacturer,product,model_type,confidence,status,docs_searched) VALUES('Testprojekt',?,?,?,90,'Prüfen',0)",(maker,prod,model))
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Artikelrecherche' in x.label for x in a.button),[x.label for x in a.button]
+          print('PASS article research UI with three manufacturers')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.20.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.20.zip
+          git commit -m 'Release manufacturer source research 2.3.20'
+          git pull --rebase origin main
+          git push origin HEAD:main
