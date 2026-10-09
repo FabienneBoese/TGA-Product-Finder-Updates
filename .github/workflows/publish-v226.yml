@@ -1,0 +1,126 @@
+name: Publish TGA Product Finder v2.2.6 Generic Recognition
+on:
+  push:
+    paths: ['.github/workflows/publish-v225.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga226
+          unzip -q TGA_Product_Finder_Update_v2.2.5.zip -d /tmp/tga226
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,re
+          p=Path('/tmp/tga226/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.2.5"')==1
+          s=s.replace('APP_VERSION = "2.2.5"','APP_VERSION = "2.2.6"',1)
+          # Generic, conservative identifier classification, independent of maker.
+          a=s.index('def classify_component_identifier(')
+          b=s.index('def db():',a)
+          block=s[a:b]
+          needle=" if not normalized:return ('','','empty')"
+          assert block.count(needle)==1
+          generic=""" if not normalized:return ('','','empty')
+           # Known TGA family designations are never exact article numbers.
+           family_terms=('PROFIPRESS','HT-SAFE','MAPRESS EDELSTAHL','FILLSET COMPACT')
+           if any(normalized==term or normalized.startswith(term+' ') for term in family_terms):
+            return ('','','family')
+           # Product types: code shapes and common manufacturer-neutral model notation.
+           if re.fullmatch(r'(?:BASIC[- ]?[A-Z]|U\\d[A-Z]|TD[- ]?Z\\s*\\d+(?:[-/]\\d+){1,4}|FIGUR\\s*\\d+\\s*[A-Z0-9]*)',normalized):
+            return (normalized,'','type')
+          """
+          block=block.replace(needle,generic,1)
+          s=s[:a]+block+s[b:]
+          # Explicitly label confidence as field completeness, not identity confidence.
+          anchor="overview.append({'Status':docstatus.split()[0]"
+          a=s.index(anchor);b=s.index(chr(10),a)
+          line=s[a:b]
+          line=line.replace("'Erkennung %':min(oconf,85) if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else oconf","'Erkennung %':min(oconf,85) if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else oconf")
+          line=line.replace("'Produkterkennung':('Kennung unklar – prüfen' if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else ostat)","'Produkterkennung':('Kennung unklar – prüfen' if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else ('Typ erkannt – Herstellerprüfung offen' if _model else ('Produktfamilie erkannt – Variante prüfen' if con.execute('SELECT product_family FROM components WHERE id=?',(ocid,)).fetchone()[0] else ostat)))")
+          s=s[:a]+line+s[b:]
+          # Distinguish recognition from complete data. Remove misleading recognition percentage.
+          s=s.replace("'Erkennung %':min(oconf,85) if oa and classify_component_identifier(om,op,oa)[2]=='unclassified' else oconf,","",1)
+          s=s.replace("auto_ok=sum(1 for x in overview if x['Erkennung %']>=95)","auto_ok=sum(1 for x in overview if x['Datenvollständigkeit %']>=95)",1)
+          # Migrate historical model/family values from article_no while keeping source.
+          tree=ast.parse(s)
+          scope={'re':re}
+          exec(compile(ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='classify_component_identifier'],type_ignores=[]),'<classification>','exec'),scope)
+          fn=scope['classify_component_identifier']
+          cases=[('Kermi','Basic-E','type'),('Danfoss','TD-Z 25-40-25','type'),('Ostendorf','HT-Safe','family'),('Jung Pumpen','U3K','type'),('Geberit','Mapress Edelstahl','family'),('Viega','Profipress','family'),('Geberit','501.632.00.1','article'),('Reflex','Fillset Compact Twin','family'),('WIKA','111.10 NG 63','type')]
+          for maker,value,kind in cases:
+           assert fn(maker,'',value)[2]==kind,(maker,value,fn(maker,'',value))
+          assert fn('Unbekannter Hersteller','','A12')[2]=='unclassified'
+          print('PASS: 10 generic cross-manufacturer classification cases')
+          ast.parse(s)
+
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          # Real migration and import integration test against SQLite, no Streamlit needed.
+          tree=ast.parse(s)
+          selected=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('classify_component_identifier','db')]
+          import sqlite3,tempfile,os
+          namespace={'sqlite3':sqlite3,'DB':tempfile.mktemp(suffix='.sqlite'),'os':os,'re':re}
+          exec(compile(ast.Module(body=selected,type_ignores=[]),'<integration>','exec'),namespace)
+          con=namespace['db']()
+          con.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status) VALUES('T','Reflex','Systemtrenner','Fillset Compact Twin',100,'Automatisch prüfbar')")
+          con.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status) VALUES('T','WIKA','Manometer','111.10 NG 63',100,'Automatisch prüfbar')")
+          con.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status) VALUES('T','Geberit','Renova','501.632.00.1',100,'Automatisch prüfbar')")
+          con.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status) VALUES('T','Kermi','Badheizkörper','Basic-E',100,'Automatisch prüfbar')")
+          con.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status) VALUES('T','Geberit','Rohrsystem','Mapress Edelstahl',100,'Automatisch prüfbar')")
+          con.commit();con.close()
+          con=namespace['db']()
+          rows=con.execute('SELECT manufacturer,article_no,model_type,identifier_source,product_family FROM components ORDER BY id').fetchall()
+          assert rows[0][1]=='' and rows[0][3]=='Fillset Compact Twin' and rows[0][4]=='Fillset Compact Twin',rows
+          assert rows[1][1]=='' and rows[1][2]=='111.10 NG 63' and rows[1][3]=='111.10 NG 63',rows
+          assert rows[2][1]=='501.632.00.1' and rows[2][3]=='501.632.00.1',rows
+          assert rows[3][1]=='' and rows[3][2]=='BASIC-E' and rows[3][3]=='Basic-E',rows
+          assert rows[4][1]=='' and rows[4][4]=='Mapress Edelstahl',rows
+          con.close();os.unlink(namespace['DB'])
+          print('PASS: SQLite migration retains original identifier, family and actual article number')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/tga226/version.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          d['version']='2.2.6'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q --disable-pip-version-check streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          import os
+          os.chdir('/tmp/tga226')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga226 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.2.6.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.2.6.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.2.6.zip
+          git commit -m 'Build v2.2.6 recognition integrity'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.2.6.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.2.6','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.2.6.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.2.6 manifest'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
