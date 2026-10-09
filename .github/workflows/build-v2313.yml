@@ -1,0 +1,72 @@
+name: Build v2.3.13
+on:
+  push:
+    paths: ['.github/workflows/build-v2313.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/v2313
+          unzip -q TGA_Product_Finder_Update_v2.3.12.zip -d /tmp/v2313
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/v2313/app.py')
+          s=p.read_text()
+          s=s.replace('APP_VERSION = "2.3.12"','APP_VERSION = "2.3.13"',1)
+          anchor="if 'documentation_scope' not in ccols:"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,"if 'doc_variant' not in ccols: c.execute('ALTER TABLE components ADD COLUMN doc_variant TEXT')\n "+anchor,1)
+          anchor="   _scope_choice=st.radio('Dokumentationsumfang'"
+          assert s.count(anchor)==1
+          lines=[
+          "   st.markdown('#### Dokumentationsrelevante Ausführung')",
+          "   _vm=str(_scope_item[1]).lower()",
+          "   _vp=str(_scope_item[2]).lower()",
+          "   _opts=['Standardausführung','ATEX-Ausführung'] if 'trox' in _vm and 'fk2' in _vp else (['Systemrohr','Formstück / Muffe','Gesamtes System'] if 'geberit' in _vm and 'mapress' in _vp else ['Allgemeine Unterlagen','Abweichende Nachweise'])",
+          "   _old=con.execute('SELECT doc_variant FROM components WHERE id=?',(_scope_id,)).fetchone()[0] or ''",
+          "   _choice=st.selectbox('Dokumentationsgruppe',_opts,index=_opts.index(_old) if _old in _opts else 0,key=f'variant_{_scope_id}')",
+          "   if st.button('Dokumentationsgruppe speichern',key=f'variant_save_{_scope_id}'):",
+          "    con.execute('UPDATE components SET doc_variant=? WHERE id=?',(_choice,_scope_id))",
+          "    con.commit()",
+          "    st.success('Dokumentationsgruppe gespeichert; Artikelnummer unverändert.')"
+          ]
+          s=s.replace(anchor,'\n'.join(lines)+'\n'+anchor,1)
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/v2313/version.json')
+          d=json.loads(v.read_text());d['version']='2.3.13';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/v2313_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/v2313')
+          a=AppTest.from_file('app.py').run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/v2313_data/tga_finder.db')
+          for maker,prod in [('TROX','FK2-EU'),('Geberit','Mapress Therm')]:
+           c.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt',?,?,90,'Prüfen',0)",(maker,prod))
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          a.session_state['doc_overview_selection']={'selection':{'rows':[0]}}
+          a.run()
+          assert not a.exception,a.exception
+          next(x for x in a.selectbox if x.label=='Dokumentationsgruppe').set_value('ATEX-Ausführung').run()
+          next(x for x in a.button if x.label=='Dokumentationsgruppe speichern').click().run()
+          assert c.execute("SELECT doc_variant FROM components WHERE manufacturer='TROX'").fetchone()[0]=='ATEX-Ausführung'
+          print('PASS selection persisted')
+          PY
+          (cd /tmp/v2313 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.13.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.13.zip
+          git commit -m 'Release v2.3.13'
+          git pull --rebase origin main
+          git push origin HEAD:main
