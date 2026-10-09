@@ -1,5 +1,5 @@
 import unittest
-from research.article_identity_records import codes, extract_html_records, classify
+from research.article_identity_records import codes, extract_html_records, classify, extract_pdf_records, extract_html_links
 
 class IdentityTests(unittest.TestCase):
     def test_reject_label(self):
@@ -15,6 +15,12 @@ class IdentityTests(unittest.TestCase):
     def test_jsonld(self):
         html = '<script type="application/ld+json">{"@type":"Product","name":"SB 125 A","sku":"09506"}</script>'
         self.assertEqual(extract_html_records(html, model="SB 125 A"), [("09506", "product-jsonld")])
+    def test_pdf_line(self):
+        pdf="SB 125 A\\nArtikelnummer: 09506\\nSB 160 A\\nArtikelnummer: 09507"
+        self.assertEqual(extract_pdf_records(pdf,model="SB 125 A"),[("09506","pdf-line")])
+    def test_official_pdf_links(self):
+        html='<a href="/data/sb125.pdf">PDF</a><a href="https://evil.example/a.pdf">bad</a>'
+        self.assertEqual(extract_html_links(html,"https://www.heliosventilatoren.de/product","heliosventilatoren.de"),["https://www.heliosventilatoren.de/data/sb125.pdf"])
     def test_ambiguous(self):
         self.assertEqual(classify([("1","row"),("2","row")]), "mehrdeutig")
     def test_not_confirmed(self):
