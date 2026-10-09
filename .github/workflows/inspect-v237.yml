@@ -1,0 +1,17 @@
+name: Inspect v237 UI test prerequisites
+on:
+  push:
+    paths: ['.github/workflows/inspect-v237.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.3.7.zip app.py > /tmp/app.py
+          python3 - <<'PY'
+          s=open('/tmp/app.py').read().splitlines()
+          for i,line in enumerate(s):
+           if i<200 or any(z in line for z in ['sqlite3.connect','DB_PATH','db_path','_tga_page=','st.sidebar','st.radio(','CREATE TABLE IF NOT EXISTS components','SELECT id,manufacturer,product,article_no','_overview_event=']):
+            print(f'{i+1}: {line[:240]}')
+          PY
