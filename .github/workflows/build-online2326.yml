@@ -1,0 +1,87 @@
+name: Build online engine 2326
+on:
+  push:
+    paths: ['.github/workflows/build-online2326.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.25.zip -d /tmp/tga
+          cat > /tmp/patch.py <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py');s=p.read_text()
+          tree=ast.parse(s)
+          old=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_tga_bulk_candidates')
+          adapter='''def _tga_bulk_candidates(maker, query):
+              result=_tga_research_online(maker,query)
+              return result["candidates"], (None if result["candidates"] else result["status"])
+          '''
+          lines=s.splitlines(keepends=True)
+          lines[old.lineno-1:old.end_lineno]=[adapter+'\n']
+          s=''.join(lines)
+          engine=Path('research/online_article_engine.py').read_text()
+          s=engine+'\n'+s
+          assert 'APP_VERSION = "2.3.25"' in s
+          s=s.replace('APP_VERSION = "2.3.25"','APP_VERSION = "2.3.26"',1)
+          ast.parse(s);p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.26';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 /tmp/patch.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          import ast,types
+          from pathlib import Path
+          t=ast.parse(Path('research/online_article_engine.py').read_text())
+          ns={'_tga_maker_domain':lambda m:'heliosventilatoren.de','_tga_extra_domains':lambda m:''}
+          exec(compile(t,'research','exec'),ns)
+          assert ns['_tga_codes']('Artikelnummer: Einbaudatum')==[]
+          assert ns['_tga_codes']('Artikelnummer: 09506')==['09506']
+          assert ns['_tga_codes']('Art.-Nr. 7985.10')==['7985.10']
+          assert not ns['_tga_official']('https://heliosventilatoren.de.evil.com/x','heliosventilatoren.de')
+          assert ns['_tga_official']('https://www.heliosventilatoren.de/x','heliosventilatoren.de')
+          class Response:
+           status_code=200
+           url='https://www.heliosventilatoren.de/product'
+           headers={'Content-Type':'text/html'}
+           text='<h1>Helios SB 125 A</h1><p>Artikelnummer: 09506</p><p>Artikelnummer: Einbaudatum</p>'
+           content=text.encode()
+           def raise_for_status(self):pass
+          class Session:
+           def get(self,url,**kwargs):
+            if 'bing.com' in url:
+             r=Response();r.content=b'<rss><channel><item><link>https://www.heliosventilatoren.de/product</link></item></channel></rss>';return r
+            return Response()
+          result=ns['_tga_research_online']('Helios','Ventilatorbox','SB 125 A',session=Session())
+          assert result['candidates']==[('09506','https://www.heliosventilatoren.de/product')],result
+          result2=ns['_tga_research_online']('Helios','Ventilatorbox','Unpassendes Modell',session=Session())
+          assert not result2['candidates']
+          print('PASS six online engine unit tests including source and model match')
+          PY
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          c.execute("INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched) VALUES('Testprojekt','Helios','Ventilatorbox','09506','SB 125 A',90,'Prüfen',0)")
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          print('PASS Streamlit UI')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.26.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.26.zip
+          git commit -m 'Release online research with official sources and PDF extraction 2.3.26'
+          git pull --rebase origin main
+          git push origin HEAD:main
