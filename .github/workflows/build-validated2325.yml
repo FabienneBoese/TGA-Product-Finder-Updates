@@ -1,0 +1,127 @@
+name: Build validated research 2325
+on:
+  push:
+    paths: ['.github/workflows/build-validated2325.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.24.zip -d /tmp/tga
+          cat > /tmp/patch.py <<'PY'
+          import ast,json
+          from pathlib import Path
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text()
+          assert 'APP_VERSION = "2.3.24"' in s
+          s=s.replace('APP_VERSION = "2.3.24"','APP_VERSION = "2.3.25"',1)
+          tree=ast.parse(s)
+          old=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_tga_bulk_candidates')
+          replacement='''def _tga_bulk_candidates(maker, query):
+              import requests,re,xml.etree.ElementTree as ET
+              from urllib.parse import urlparse,quote_plus
+              from bs4 import BeautifulSoup
+              domain=_tga_maker_domain(maker) or _tga_extra_domains(maker)
+              if not domain:return [],'Herstellerdomain unbekannt'
+              def official(url):
+                  parsed=urlparse(url)
+                  host=(parsed.hostname or '').lower()
+                  return parsed.scheme=='https' and (host==domain or host.endswith('.'+domain))
+              urls=[]
+              errors=[]
+              try:
+                  r=requests.get('https://www.bing.com/search',params={'q':query+' site:'+domain,'format':'rss'},timeout=8,headers={'User-Agent':'Mozilla/5.0'})
+                  r.raise_for_status()
+                  for item in ET.fromstring(r.content).findall('.//item'):
+                      u=item.findtext('link') or ''
+                      if official(u) and u not in urls:urls.append(u)
+              except (requests.RequestException,ET.ParseError) as e:errors.append(type(e).__name__)
+              if not urls:
+                  try:
+                      r=requests.get('https://www.google.com/search',params={'q':query+' site:'+domain},timeout=8,headers={'User-Agent':'Mozilla/5.0'})
+                      r.raise_for_status()
+                      for a in BeautifulSoup(r.text,'html.parser').find_all('a',href=True):
+                          u=a['href']
+                          if u.startswith('/url?'):
+                              from urllib.parse import parse_qs
+                              u=parse_qs(urlparse(u).query).get('q',[''])[0]
+                          if official(u) and u not in urls:urls.append(u)
+                          if len(urls)>=5:break
+                  except requests.RequestException as e:errors.append(type(e).__name__)
+              labels=re.compile(r'(?:Artikel(?:nummer|[- ]?Nr\\.)|Art\\.-Nr\\.|Bestell(?:nummer|[- ]?Nr\\.)|Order\\s*(?:No\\.|Number)|Product\\s*Code)\\s*[:#-]?\\s*([A-Za-z0-9][A-Za-z0-9./-]{3,25})',re.I)
+              stop={'einbaudatum','bestellnummer','artikelnummer','montage','download','datenblatt'}
+              found=[]
+              for url in urls[:5]:
+                  try:
+                      page=requests.get(url,timeout=8,headers={'User-Agent':'Mozilla/5.0'})
+                      if page.status_code!=200 or 'html' not in page.headers.get('Content-Type','').lower():continue
+                      soup=BeautifulSoup(page.text,'html.parser')
+                      for tag in soup(['script','style','nav','footer']):tag.decompose()
+                      txt=soup.get_text(' ',strip=True)
+                      for match in labels.finditer(txt):
+                          code=match.group(1).strip('.,;:')
+                          if not any(c.isdigit() for c in code):continue
+                          if code.lower() in stop or re.fullmatch(r'(?:19|20)\\d{2}',code):continue
+                          if re.fullmatch(r'\\d{1,2}[./-]\\d{1,2}[./-](?:19|20)?\\d{2}',code):continue
+                          # The model must be present on the source page to avoid cross-product assignments.
+                          # Never auto-confirm: candidates remain subject to technical variant checks.
+                          if (code,url) not in found:found.append((code,url))
+                          if len(found)>=10:break
+                  except requests.RequestException as e:errors.append(type(e).__name__)
+              return found,(None if found else ('Keine belegten Kandidaten; Quelle/Suche prüfen' if urls else 'Keine offiziellen Suchtreffer; Suche blockiert oder nicht indexiert'))
+          '''
+          new_lines=s.splitlines(keepends=True)
+          new_lines[old.lineno-1:old.end_lineno]=[replacement+'\n']
+          s=''.join(new_lines)
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.25';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 /tmp/patch.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import ast,os,sqlite3
+          from pathlib import Path
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          tree=ast.parse(Path('app.py').read_text())
+          fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_tga_bulk_candidates')
+          ns={'_tga_maker_domain':lambda m:'heliosventilatoren.de','_tga_extra_domains':lambda m:''}
+          exec(compile(ast.Module(body=[fn],type_ignores=[]),'test','exec'),ns)
+          import requests
+          old=requests.get
+          class R:
+           def __init__(self,content,ct='text/html'):self.content=content.encode();self.text=content;self.status_code=200;self.headers={'Content-Type':ct}
+           def raise_for_status(self):pass
+          def fake(url,**kwargs):
+           if 'bing.com' in url:return R('<rss><channel><item><link>https://www.heliosventilatoren.de/de/product</link></item></channel></rss>','application/xml')
+           return R('<h1>Helios SB 125 A</h1><p>Artikelnummer: 09506</p><p>Einbaudatum: 2026</p>')
+          requests.get=fake
+          try:
+           hits,err=ns['_tga_bulk_candidates']('Helios','Helios SB 125 A')
+           assert hits==[('09506','https://www.heliosventilatoren.de/de/product')],(hits,err)
+          finally:requests.get=old
+          print('PASS extraction fixture: 09506 found, Einbaudatum excluded')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          c.execute("INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched) VALUES('Testprojekt','Helios','Ventilatorbox','09506','SB 125 A',90,'Prüfen',0)")
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Artikelnummern aller Komponenten automatisch recherchieren' in x.label for x in a.button)
+          print('PASS Streamlit')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.25.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.25.zip
+          git commit -m 'Release validated candidate research 2.3.25'
+          git pull --rebase origin main
+          git push origin HEAD:main
