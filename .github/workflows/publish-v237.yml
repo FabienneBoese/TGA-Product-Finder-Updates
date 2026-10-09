@@ -40,6 +40,7 @@ jobs:
             editor[i]="   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')"+chr(10)
           # Eliminate redundant nested selection assignment and show the active product.
           editor=[line for line in editor if "_scope_label=_selected_label if _selected_label in _scope_map else _scope_labels[0]" not in line]
+          editor=[("  "+line.lstrip()) if "st.markdown(\'#### Produktdetails zur ausgewählten Tabellenzeile\')" in line else line for line in editor]
           editor=[line for line in editor if "st.caption('Ausgewählte Tabellenzeile:" not in line]
           lookup=next(i for i,line in enumerate(editor) if '_scope_item=_scope_map[_scope_label]' in line)
           editor.insert(lookup,"    st.caption('Ausgewähltes Produkt: '+_scope_label)"+chr(10))
