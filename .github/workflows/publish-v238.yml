@@ -34,12 +34,7 @@ jobs:
           # Persist selected component ID across Streamlit reruns (radio/save).
           target="   _selected_label=None"
           assert s.count(target)==1
-          replacement="""   _selected_label=None
-   _active_key='doc_active_component_'+str(project)
-   if _selected_index is not None and 0<=_selected_index<len(rows):
-    st.session_state[_active_key]=rows[_selected_index][0]
-   _selected_id=st.session_state.get(_active_key)
-   _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)"""
+          replacement=chr(10).join([target,"   _active_key='doc_active_component_'+str(project)","   if _selected_index is not None and 0<=_selected_index<len(rows):","    st.session_state[_active_key]=rows[_selected_index][0]","   _selected_id=st.session_state.get(_active_key)","   _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)"])
           s=s.replace(target,replacement,1)
           # Deduplicate identical model editor accidentally inserted twice in legacy app.
           duplicate="   _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''"
