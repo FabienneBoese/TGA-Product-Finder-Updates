@@ -49,6 +49,7 @@ jobs:
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")<s.index("st.subheader('📁 Offline-Dokumente dieses Projekts')")
           assert '_overview_event.selection.rows' in s
           assert "st.session_state.get('doc_overview_selection'" not in s
+          print('DEBUG_LAYOUT',repr(s.splitlines()[1913:1932]),flush=True)
           ast.parse(s)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
