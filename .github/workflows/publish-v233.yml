@@ -76,7 +76,7 @@ jobs:
            match=next((line for line in s.splitlines(keepends=True) if "st.markdown(" in line and "Dokumentationsumfang festlegen" in line),None)
            assert match, "scope editor heading missing; nearby: "+repr([line for line in s.splitlines() if "scope" in line.lower() or "Dokumentationsumfang" in line][:35])
            start=s.index(match)
-          end=s.index("  st.subheader('📁 Offline-Dokumente dieses Projekts')",start)
+          end=s.index(next(line for line in s[start:].splitlines(keepends=True) if 'Offline-Dokumente dieses Projekts' in line),start)
           section=s[start:end]
           assert "_scope_id" in section and "Dokumentationsumfang speichern" in section
           s=s[:start]+s[end:]
