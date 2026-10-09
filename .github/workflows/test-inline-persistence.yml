@@ -54,6 +54,13 @@ jobs:
             page.wait_for_timeout(700)
             print('AFTER EDIT:',page.locator('body').inner_text()[-1000:])
             print('VISIBLE INPUTS:',page.locator('input:visible').count())
+            grid.click(position={'x':min(220,box['width']-20),'y':58})
+            page.keyboard.press('Control+End')
+            page.keyboard.press('Enter')
+            page.wait_for_timeout(600)
+            print('EDIT WIDGETS:',page.locator('[role="listbox"]').count(),page.locator('[role="option"]').count(),page.locator('input:visible').count())
+            print('EDITOR TEXT:',page.locator('body').inner_text()[-1400:])
+
             print('PASS browser renders inline documentation group')
             browser.close()
           finally:
