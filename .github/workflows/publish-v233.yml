@@ -70,10 +70,14 @@ jobs:
           lines[i+1:i+1]=[indent+v+'\n' for v in snippet]
           s=''.join(lines)
           # Move the existing documentation-scope editor before the overview table.
-          start=s.index("  st.subheader('Dokumentationsumfang festlegen')")
+          start=s.index("  st.subheader('Dokumentationsumfang festlegen')") if "  st.subheader('Dokumentationsumfang festlegen')" in s else -1
+          if start<0:
+           import re
+           match=re.search(r"^\\s*st\\.subheader\\([^\\n]*Dokumentationsumfang festlegen[^\\n]*$",s,re.M)
+           assert match, "scope editor heading missing"
+           start=s.rfind('\\n',0,match.start())+1
           end=s.index("  st.subheader('📁 Offline-Dokumente dieses Projekts')",start)
           section=s[start:end]
-          # Preserve all existing controls and database persistence.
           assert "_scope_id" in section and "Dokumentationsumfang speichern" in section
           s=s[:start]+s[end:]
           position=s.index("   overview=[]")
