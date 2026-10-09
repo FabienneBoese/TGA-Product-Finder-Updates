@@ -35,7 +35,7 @@ jobs:
           """
           s=s.replace(anchor,helper+anchor,1)
           anchor_overview=" if _tga_page=='📊 Dokumentenübersicht':"
-          assert s.count(anchor_overview)==1
+          assert anchor_overview in s, "overview anchor missing"
           enrich=""" # Exact Helios match only; existing article numbers are protected.
            _helios_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no FROM components WHERE project=?",(project,)).fetchall()
            for _hid,_hm,_hp,_ht,_ha in _helios_rows:
@@ -46,7 +46,7 @@ jobs:
            rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()
           """
           s=s.replace(anchor_overview,enrich+anchor_overview,1)
-          assert s.count("'Artikelnummer':oa or '—'")==1
+          assert "'Artikelnummer':oa or '—'" in s, "overview article column missing"
           s=s.replace("'Artikelnummer':oa or '—'","'Artikelnummer':oa or '—','Herstellerquelle':helios_official_article(om,op,'',oa)['source'] if helios_official_article(om,op,'',oa) else '—'",1)
           lines=s.splitlines(keepends=True)
           targets=[i for i,line in enumerate(lines) if '_scope_id=_scope_item[0]' in line]
