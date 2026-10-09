@@ -72,7 +72,7 @@ jobs:
           project='Test'
           test_block=misplaced
           # Only the actual enrichment statements; skip overview rows reassignment.
-          test_block=test_block[:test_block.index(next(line for line in test_block.splitlines(keepends=True) if 'rows=con.execute' in line))]
+          test_block=test_block[:test_block.index(next(line for line in test_block.splitlines(keepends=True) if line.lstrip().startswith('rows=con.execute(')))]
           import textwrap
           exec(compile(textwrap.dedent(test_block),'<real-enrichment>','exec'),{'con':con,'project':project,'helios_official_article':ns['helios_official_article']})
           found=dict(con.execute('SELECT id,article_no FROM components'))
