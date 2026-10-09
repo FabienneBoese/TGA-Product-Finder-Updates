@@ -1,0 +1,117 @@
+name: Publish v2.3.2 Helios
+on:
+  push:
+    paths: ['.github/workflows/publish-v232.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga232
+          unzip -q TGA_Product_Finder_Update_v2.3.0.zip -d /tmp/tga232
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga232/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.0"')==1
+          s=s.replace('APP_VERSION = "2.3.0"','APP_VERSION = "2.3.2"',1)
+          anchor='def classify_component_identifier('
+          assert s.count(anchor)==1
+          helper="""def helios_official_article(manufacturer, product, model_type='', article_no=''):
+           if 'helios' not in str(manufacturer or '').casefold(): return None
+           text=' '.join(str(v or '') for v in (product,model_type))
+           variants={re.sub(r'\\s+','',v.upper()) for v in re.findall(r'(?<![A-Za-z0-9])SB\\s*\\d+\\s*[A-Z](?![A-Za-z0-9])',text,re.I)}
+           if variants!={'SB125A'}: return None
+           existing=str(article_no or '').strip()
+           return {'article':'09506','conflict':bool(existing and existing.lstrip('0')!='9506'),'source':'https://www.helios.ch/de/produkt/sb-125-a-silentbox-rohrventilator-1-ph-schallgedaempft'}
+
+          """
+          s=s.replace(anchor,helper+anchor,1)
+          anchor_overview=" if _tga_page=='📊 Dokumentenübersicht':"
+          assert s.count(anchor_overview)==1
+          enrich=""" # Exact Helios match only; existing article numbers are protected.
+ _helios_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no FROM components WHERE project=?",(project,)).fetchall()
+ for _hid,_hm,_hp,_ht,_ha in _helios_rows:
+  _candidate=helios_official_article(_hm,_hp,_ht,_ha)
+  if _candidate and not _candidate['conflict'] and not str(_ha or '').strip():
+   con.execute("UPDATE components SET article_no=? WHERE id=? AND (article_no IS NULL OR TRIM(article_no)='')",(_candidate['article'],_hid))
+ con.commit()
+ rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()
+"""
+          s=s.replace(anchor_overview,enrich+anchor_overview,1)
+          assert s.count("'Artikelnummer':oa or '—'")==1
+          s=s.replace("'Artikelnummer':oa or '—'","'Artikelnummer':oa or '—','Herstellerquelle':helios_official_article(om,op,'',oa)['source'] if helios_official_article(om,op,'',oa) else '—'",1)
+          lines=s.splitlines(keepends=True)
+          targets=[i for i,line in enumerate(lines) if '_scope_id=_scope_item[0]' in line]
+          assert len(targets)==1
+          i=targets[0]; indent=lines[i][:len(lines[i])-len(lines[i].lstrip())]
+          snippet=[
+           "_helios_row=con.execute('SELECT manufacturer,product,model_type,article_no FROM components WHERE id=?',(_scope_id,)).fetchone()",
+           "if _helios_row:",
+           " _helios_match=helios_official_article(*_helios_row)",
+           " if _helios_match:",
+           "  st.caption('Helios-Herstellerquelle: '+_helios_match['source'])",
+           "  if _helios_match['conflict']:",
+           "   st.warning('Artikelnummer weicht von Helios 09506 ab; vorhandenen Wert bitte prüfen.')",
+           "  elif not str(_helios_row[3] or '').strip():",
+           "   st.info('Herstellerartikelnummer 09506 erkannt (Helios SB 125 A).')",
+           "   if st.button('Artikelnummer 09506 übernehmen',key=f'helios_article_{_scope_id}'):",
+           "    con.execute(\"UPDATE components SET article_no='09506' WHERE id=? AND (article_no IS NULL OR TRIM(article_no)='')\",(_scope_id,))",
+           "    con.commit()",
+           "    st.success('Artikelnummer übernommen.')"
+          ]
+          lines[i+1:i+1]=[indent+v+'\n' for v in snippet]
+          s=''.join(lines)
+          ast.parse(s);p.write_text(s,encoding='utf-8');py_compile.compile(str(p),doraise=True)
+          tree=ast.parse(s)
+          fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='helios_official_article')
+          ns={'re':re}
+          exec(compile(ast.Module(body=[fn],type_ignores=[]),'<test>','exec'),ns)
+          f=ns['helios_official_article']
+          assert f('Helios','SilentBox SB 125 A')['article']=='09506'
+          assert f('Helios','SilentBox','SB 125 A')['article']=='09506'
+          assert f('Helios','SB 125 B') is None
+          assert f('Helios','SB 125 A / SB 160 A') is None
+          assert f('Other','SB 125 A') is None
+          assert f('Helios','SB 125 A',article_no='12345')['conflict']
+          v=Path('/tmp/tga232/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.2'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('PASS: Helios identifier tests')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga232')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga232 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.2.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.2.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.2.zip
+          git commit -m 'Build v2.3.2 Helios'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.2.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.2','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.2.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.2'
+          git pull --rebase origin main
+          git push origin HEAD:main
