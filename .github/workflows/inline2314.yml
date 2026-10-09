@@ -40,11 +40,11 @@ jobs:
           "      st.success('Dokumentationsgruppe gespeichert.')",
           "   _overview_event=None"
           ]
-          s=s.replace(anchor,'\n'.join(ui),1)
+          s=s.replace(anchor,'\n'.join(line[1:] for line in ui),1)
           s=s.replace('    _selected_rows=_overview_event.selection.rows','    _selected_rows=[]',1)
           anchor=next(l for l in s.splitlines() if '_scope_label=_selected_label if' in l)
           assert s.count(anchor)==1
-          s=s.replace(anchor,"    _selected_label=st.selectbox('Produktdetails öffnen',_scope_labels,index=_scope_labels.index(_selected_label) if _selected_label in _scope_labels else 0)\n"+anchor,1)
+          s=s.replace(anchor,"   _selected_label=st.selectbox('Produktdetails öffnen',_scope_labels,index=_scope_labels.index(_selected_label) if _selected_label in _scope_labels else 0)\n"+anchor,1)
           ast.parse(s)
           p.write_text(s)
           v=Path('/tmp/tga/version.json')
