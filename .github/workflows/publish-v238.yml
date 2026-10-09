@@ -31,6 +31,16 @@ jobs:
           lines[caption]=indent+lines[caption].lstrip()
           lines.insert(caption,indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10))
           s=''.join(lines)
+          # Persist selected component ID across Streamlit reruns (radio/save).
+          target="   _selected_label=None"
+          assert s.count(target)==1
+          replacement="""   _selected_label=None
+   _active_key='doc_active_component_'+str(project)
+   if _selected_index is not None and 0<=_selected_index<len(rows):
+    st.session_state[_active_key]=rows[_selected_index][0]
+   _selected_id=st.session_state.get(_active_key)
+   _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)"""
+          s=s.replace(target,replacement,1)
           # Deduplicate identical model editor accidentally inserted twice in legacy app.
           duplicate="   _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''"
           pos=[i for i,line in enumerate(s.splitlines(keepends=True)) if line.rstrip()==duplicate]
