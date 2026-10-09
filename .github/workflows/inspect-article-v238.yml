@@ -1,0 +1,17 @@
+name: Inspect article resolver v238
+on:
+  push:
+    paths: ['.github/workflows/inspect-article-v238.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.3.8.zip app.py > /tmp/app.py
+          python3 - <<'PY'
+          s=open('/tmp/app.py').read().splitlines()
+          for i,l in enumerate(s):
+           if any(k in l for k in ['helios','article_no','identifier_source','manufacturer_url','manufacturer_link','product_url','product_family']) and (i<350 or 1600<i<2050):
+            print(f'{i+1}: {l[:220]}')
+          PY
