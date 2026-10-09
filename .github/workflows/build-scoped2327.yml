@@ -1,0 +1,70 @@
+name: Build scoped article research 2327
+on:
+  push:
+    paths: ['.github/workflows/build-scoped2327.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_article_identity_records.py' -v
+          mkdir -p /tmp/tga2327
+          unzip -q TGA_Product_Finder_Update_v2.3.26.zip -d /tmp/tga2327
+          python3 - <<'PY'
+          import ast,json
+          from pathlib import Path
+          p=Path('/tmp/tga2327/app.py')
+          s=p.read_text(encoding='utf-8')
+          module=Path('research/article_identity_records.py').read_text(encoding='utf-8')
+          # Embed a conservative, per-record extractor. The original online
+          # search remains the fallback only for discovery, never for assigning
+          # page-wide article numbers.
+          marker='    candidates=[];sources=[]\n    for url in urls:'
+          assert marker in s, 'Expected v2.3.26 engine signature missing'
+          s=s.replace(marker, '    candidates=[];sources=[]\n    for url in urls:',1)
+          needle='            for code in _tga_codes(txt):\n                if (code,url) not in candidates:candidates.append((code,url))'
+          assert needle in s
+          replacement='''            # Only bounded product records: table rows and Product JSON-LD.
+            if "pdf" in r.headers.get("Content-Type","").lower() or r.url.lower().split("?")[0].endswith(".pdf"):
+                # PDF-wide numbers are not attributable to one variant.
+                continue
+            for code, evidence in extract_html_records(r.text, model=model, dimension=dimension):
+                if (code,url) not in candidates:candidates.append((code,url))'''
+          s=s.replace(needle,replacement,1)
+          assert 'APP_VERSION = "2.3.26"' in s
+          s=s.replace('APP_VERSION = "2.3.26"','APP_VERSION = "2.3.27"',1)
+          s=module+'\n'+s
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          v=Path('/tmp/tga2327/version.json')
+          d=json.loads(v.read_text());d['version']='2.3.27'
+          v.write_text(json.dumps(d))
+          print('PASS integration syntax')
+          PY
+          TGA_DATA_DIR=/tmp/tga2327_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2327')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          print('PASS Streamlit startup')
+          PY
+          (cd /tmp/tga2327 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.27.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.27.zip')
+          manifest={'version':'2.3.27','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.27.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+          Path('update_manifest.json').write_text(json.dumps(manifest,indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.27.zip update_manifest.json
+          git commit -m 'Release conservative bounded article research 2.3.27'
+          git pull --rebase origin main
+          git push origin HEAD:main
