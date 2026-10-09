@@ -80,7 +80,7 @@ jobs:
           section=s[start:end]
           assert "_scope_id" in section and "Dokumentationsumfang speichern" in section
           s=s[:start]+s[end:]
-          position=s.index("   overview=[]")
+          position=s.index(next(line for line in s.splitlines(keepends=True) if 'overview=[]' in line))
           s=s[:position]+section+s[position:]
           assert s.index("Dokumentationsumfang festlegen")<s.index("   overview=[]")
           ast.parse(s);p.write_text(s,encoding='utf-8');py_compile.compile(str(p),doraise=True)
