@@ -35,7 +35,8 @@ jobs:
                 continue
             for code, evidence in extract_html_records(r.text, model=model, dimension=dimension):
                 if (code,url) not in candidates:candidates.append((code,url))'''
-          replacement='\n'.join(('            '+line if line.strip() else line) for line in replacement.splitlines())\n          s=s.replace(needle,replacement,1)
+          replacement='\n'.join(('            '+line if line.strip() else line) for line in replacement.splitlines())
+          s=s.replace(needle,replacement,1)
           assert 'APP_VERSION = "2.3.26"' in s
           s=s.replace('APP_VERSION = "2.3.26"','APP_VERSION = "2.3.27"',1)
           s=module+'\n'+s
