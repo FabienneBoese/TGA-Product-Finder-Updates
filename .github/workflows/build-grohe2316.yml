@@ -34,7 +34,7 @@ jobs:
              con.execute('UPDATE components SET article_no=?,identifier_source=? WHERE id=?',(_code,'GROHE Herstellerproduktseite – explizite Nummer',_gid))
              con.commit()
            """
-          s=s.replace(anchor,'\n'.join(line[1:] for line in addon.splitlines())+'\n'+anchor,1)
+          _lines=addon.splitlines();s=s.replace(anchor,_lines[0][1:]+'\n'+'\n'.join(line[9:] for line in _lines[1:])+'\n'+anchor,1)
           ast.parse(s)
           p.write_text(s)
           v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.16';v.write_text(json.dumps(d))
