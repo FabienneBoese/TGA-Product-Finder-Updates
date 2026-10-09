@@ -1,4 +1,4 @@
-name: Publish TGA Product Finder v2.2.5 Recognition Integrity
+name: Publish TGA Product Finder v2.2.5 Recognition Integrity (Retry)
 on:
   push:
     paths: ['.github/workflows/publish-v225.yml']
