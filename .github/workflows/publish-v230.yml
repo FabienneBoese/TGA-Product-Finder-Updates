@@ -52,7 +52,7 @@ jobs:
           s=s.replace(old,replacement,1)
           # Suggest category and dimensions from the designation, without auto-saving
           # or changing existing user-entered values.
-          anchor="           _scope_category=st.text_input("
+          anchor=next(line for line in s.splitlines() if "_scope_category=st.text_input(" in line)
           assert s.count(anchor)==1
           helper="""           _product_text=str(_scope_item[2] or '')
            _suggested_category=next((term for term in ('Systemrohr','Schiebemuffe','Muffe','Bogen','T-Stück','Reduzierung') if term.casefold() in _product_text.casefold()),'')
@@ -61,6 +61,7 @@ jobs:
            if _suggested_category or _suggested_dimensions:
             st.caption('Vorschlag aus Produktbezeichnung (bitte vor dem Speichern prüfen): '+(_suggested_category or 'Bauteilart offen')+' | '+(_suggested_dimensions or 'Dimension offen'))
           """
+          helper='\n'.join(anchor[:len(anchor)-len(anchor.lstrip())]+line.lstrip() if i==0 else anchor[:len(anchor)-len(anchor.lstrip())]+line[1:] for i,line in enumerate(helper.splitlines()))+'\n'
           s=s.replace(anchor,helper+anchor,1)
           s=s.replace("value=_scope_item[5] or '',key=f'doc_scope_category_{_scope_id}'","value=_scope_item[5] or _suggested_category,key=f'doc_scope_category_{_scope_id}'",1)
           s=s.replace("value=_scope_item[6] or '',key=f'doc_scope_dimensions_{_scope_id}'","value=_scope_item[6] or _suggested_dimensions,key=f'doc_scope_dimensions_{_scope_id}'",1)
