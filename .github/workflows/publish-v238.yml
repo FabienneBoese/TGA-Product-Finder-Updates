@@ -77,7 +77,7 @@ jobs:
           assert len(captions)==1 and 'TROX' in captions[0],captions
           assert 'Helios' not in captions[0],captions
           print('PASS: selected second table row displays TROX details',captions)
-          at.radio[-1].set_value('Einzelartikel / Variante prüfen').run()
+          next(r for r in at.radio if r.label=='Dokumentationsumfang').set_value('Einzelartikel / Variante prüfen').run()
           assert not at.exception,at.exception
           save=next(b for b in at.button if b.label=='Dokumentationsumfang speichern')
           save.click().run()
