@@ -1,0 +1,83 @@
+name: Publish v2.3.6 Overview Crash Fix
+on:
+  push:
+    paths: ['.github/workflows/publish-v236.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga236
+          unzip -q TGA_Product_Finder_Update_v2.3.5.zip -d /tmp/tga236
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga236/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.5"')==1
+          s=s.replace('APP_VERSION = "2.3.5"','APP_VERSION = "2.3.6"',1)
+          lines=s.splitlines(keepends=True)
+          for i,line in enumerate(lines):
+           if '_scope_item=_scope_map[_scope_label]' in line:
+            print('BEFORE_SCOPE',repr(lines[i-5:i+2]))
+          # Insert an unconditional selection immediately before first use.
+          # This works even if the previous line was swallowed by a comment.
+          marker=next(line for line in lines if '_scope_item=_scope_map[_scope_label]' in line)
+          indent=marker[:len(marker)-len(marker.lstrip())]
+          fix=indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10)
+          assert s.count(marker)==1
+          s=s.replace(marker,fix+marker,1)
+          assert s.index(fix)<s.index(marker)
+          # Verify every overview branch includes the assignment before lookup.
+          tree=ast.parse(s)
+          scope_lines=[(n.lineno,n.id) for n in ast.walk(tree) if isinstance(n,ast.Name) and n.id=='_scope_label' and isinstance(n.ctx,ast.Store)]
+          assert len(scope_lines)>=1,scope_lines
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          # Execute the exact selected-row expression with a test fixture.
+          scope_map={'Helios | SB 125 A | ID 8':(8,),'TROX | FK2-EU | ID 9':(9,)}
+          for selected,expected in [(None,'Helios | SB 125 A | ID 8'),('TROX | FK2-EU | ID 9','TROX | FK2-EU | ID 9'),('missing','Helios | SB 125 A | ID 8')]:
+           ctx={'_scope_map':scope_map,'_selected_label':selected}
+           exec(fix.strip(),ctx)
+           assert ctx['_scope_label']==expected,ctx
+           assert scope_map[ctx['_scope_label']][0] in (8,9)
+          print('PASS: selection initialized, selected row and fallback regression')
+          v=Path('/tmp/tga236/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.6'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga236')
+          at=AppTest.from_file('app.py',default_timeout=40).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga236 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.6.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.6.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.6.zip
+          git commit -m 'Build v2.3.6 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.6.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.6','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.6.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.6'
+          git pull --rebase origin main
+          git push origin HEAD:main
