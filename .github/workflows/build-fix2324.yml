@@ -1,0 +1,72 @@
+name: Fix bulk candidates 2324
+on:
+  push:
+    paths: ['.github/workflows/build-fix2324.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.23.zip -d /tmp/tga
+          cat > /tmp/fix.py <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py');s=p.read_text()
+          assert 'APP_VERSION = "2.3.23"' in s
+          s=s.replace('APP_VERSION = "2.3.23"','APP_VERSION = "2.3.24"',1)
+          needle="def _tga_bulk_candidates(maker, query):"
+          assert needle in s
+          helper="""def _tga_valid_article_candidate(code):
+              import re
+              value=str(code or '').strip().strip('.,;:')
+              if not 4<=len(value)<=26:return False
+              if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9./-]*',value):return False
+              if not any(c.isdigit() for c in value):return False
+              if value.casefold() in {'einbaudatum','bestellnummer','artikelnummer','2024','2025','2026'}:return False
+              return True
+
+          """
+          s=helper+s
+          s=s.replace("found.append((match.group(1),url))","if _tga_valid_article_candidate(match.group(1)):\n                              found.append((match.group(1),url))",1)
+          anchor="domain=_tga_maker_domain(maker)"
+          assert anchor in s
+          s=s.replace(anchor,anchor+"\n              if not domain:\n                  domain=_tga_extra_domains(maker)",1)
+          domains="""def _tga_extra_domains(maker):
+              known={'lunos':'lunos.de','danfoss':'danfoss.com','kermi':'kermi.com','ostendorf':'ostendorf-kunststoffe.com','jung pumpen':'jung-pumpen.de','laufen':'laufen.com','duravit':'duravit.com','hewi':'hewi.com','alape':'alape.com','wittingsthal':'wittingsthal.de','witingsthal':'wittingsthal.de','viessmann':'viessmann.de','grundfos':'grundfos.com','vaillant':'vaillant.de'}
+              key=str(maker or '').casefold()
+              return next((v for k,v in known.items() if k in key),'')
+
+          """
+          s=domains+s
+          ast.parse(s);p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.24';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 /tmp/fix.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          c.execute("INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched) VALUES('Testprojekt','Helios','Ventilatorbox','09506','SB 125 A',90,'Prüfen',0)")
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Artikelnummern aller Komponenten automatisch recherchieren' in x.label for x in a.button)
+          print('PASS Streamlit')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.24.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.24.zip
+          git commit -m 'Release validated article candidates 2.3.24'
+          git pull --rebase origin main
+          git push origin HEAD:main
