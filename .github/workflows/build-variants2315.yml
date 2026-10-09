@@ -1,0 +1,93 @@
+name: Build product-specific variants 2315
+on:
+  push:
+    paths: ['.github/workflows/build-variants2315.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.14.zip -d /tmp/tga
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text()
+          s=s.replace('APP_VERSION = "2.3.14"','APP_VERSION = "2.3.15"',1)
+          start=s.index("   _options=['','Standardausführung'")
+          end=s.index("   _overview_event=None",start)+len("   _overview_event=None")
+          ui="""   st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')
+           _hdr=st.columns([2,3,3])
+           _hdr[0].markdown('**Hersteller**')
+           _hdr[1].markdown('**Produkt**')
+           _hdr[2].markdown('**Dokumentationsgruppe**')
+           for _idx,_item in ovdf.iterrows():
+            _maker=str(rows[_idx][1])
+            _prod=str(rows[_idx][2])
+            _m=_maker.lower()
+            _p=_prod.lower()
+            if 'trox' in _m and 'fk2' in _p:
+             _allowed=['Standardausführung','ATEX-Ausführung']
+            elif 'geberit' in _m and 'mapress' in _p:
+             _allowed=['Systemrohr','Formstück / Muffe','Gesamtes System']
+            else:
+             _allowed=['Allgemeine Unterlagen','Abweichende Nachweise']
+            _old=str(_item['Dokumentationsgruppe'] or '')
+            _choices=['']+_allowed
+            if _old and _old not in _choices:
+             _choices.append(_old)
+            _cells=st.columns([2,3,3])
+            _cells[0].write(_maker)
+            _cells[1].write(_prod)
+            _new=_cells[2].selectbox('Dokumentationsgruppe',_choices,index=_choices.index(_old) if _old in _choices else 0,key='variant_row_'+str(rows[_idx][0]),label_visibility='collapsed')
+            if _new!=_old:
+             if _new and _new not in _allowed:
+              st.warning('Bisherige Zuordnung für '+_maker+' '+_prod+' überprüfen.')
+             else:
+              con.execute('UPDATE components SET doc_variant=? WHERE id=?',(_new,rows[_idx][0]))
+              con.commit()
+              st.success('Dokumentationsgruppe gespeichert: '+_maker+' '+_prod)
+           _overview_event=None"""
+          s=s[:start]+ui+s[end:]
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/tga/version.json')
+          d=json.loads(v.read_text());d['version']='2.3.15';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py').run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          for m,p in [('TROX','FK2-EU'),('Geberit','Mapress Therm'),('GROHE','Eurosmart CE'),('ROCKWOOL','Conlit 150 U'),('Helios','SilentBox')]:
+           c.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt',?,?,90,'Prüfen',0)",(m,p))
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          opts=[list(x.options) for x in a.selectbox if x.label=='Dokumentationsgruppe']
+          assert len(opts)==5,opts
+          assert opts[0]==['','Standardausführung','ATEX-Ausführung'],opts
+          assert opts[1]==['','Systemrohr','Formstück / Muffe','Gesamtes System'],opts
+          assert all(x==['','Allgemeine Unterlagen','Abweichende Nachweise'] for x in opts[2:]),opts
+          sel=next(x for x in a.selectbox if x.label=='Dokumentationsgruppe' and 'Systemrohr' in x.options)
+          sel.set_value('Systemrohr').run()
+          assert not a.exception,a.exception
+          assert c.execute("SELECT doc_variant FROM components WHERE manufacturer='Geberit'").fetchone()[0]=='Systemrohr'
+          print('PASS product-specific options and persisted Geberit choice')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.15.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.15.zip
+          git commit -m 'Release product-specific variant dropdowns 2.3.15'
+          git pull --rebase origin main
+          git push origin HEAD:main
