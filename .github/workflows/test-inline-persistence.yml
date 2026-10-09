@@ -12,7 +12,7 @@ jobs:
           mkdir /tmp/app
           unzip -q TGA_Product_Finder_Update_v2.3.14.zip -d /tmp/app
           python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf playwright
-          python3 -m playwright install --with-deps chromium >/dev/null
+          python3 -m playwright install chromium >/dev/null
           cat > /tmp/test_ui.py <<'PY'
           import os,sqlite3,subprocess,time
           from playwright.sync_api import sync_playwright
@@ -53,7 +53,9 @@ jobs:
             page.wait_for_timeout(700)
             print('EDIT WIDGETS:',page.locator('[role="listbox"]').count(),page.locator('[role="option"]').count(),page.locator('input:visible').count())
             print('EDITOR TEXT:',page.locator('body').inner_text()[-1600:])
-            page.get_by_role('option',name='ATEX-Ausführung').click(timeout=10000)
+            print('OPTION NAMES:',page.locator('[role="option"]').all_text_contents())
+            print('LISTBOX:',page.locator('[role="listbox"]').all_text_contents())
+            page.get_by_role('option',name='ATEX-Ausführung').click(timeout=3000)
             page.wait_for_timeout(1800)
             saved=db.execute("SELECT doc_variant,article_no FROM components WHERE manufacturer='TROX'").fetchone()
             print('SAVED VARIANT:',saved)
