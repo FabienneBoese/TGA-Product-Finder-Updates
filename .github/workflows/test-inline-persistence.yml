@@ -36,6 +36,8 @@ jobs:
             db.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt','TROX','FK2-EU',90,'Prüfen',0)")
             db.commit()
             page.reload()
+            page.wait_for_timeout(3000)
+            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
             page.wait_for_timeout(4000)
             page.screenshot(path='/tmp/inline-before.png',full_page=True)
             print('TABLE EDITOR:',page.locator('[data-testid="stDataFrame"]').count(),page.locator('[data-testid="stDataEditor"]').count())
