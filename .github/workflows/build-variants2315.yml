@@ -53,7 +53,7 @@ jobs:
               con.commit()
               st.success('Dokumentationsgruppe gespeichert: '+_maker+' '+_prod)
            _overview_event=None"""
-          s=s[:start]+ui+s[end:]
+          s=s[:start]+'\n'.join(line[1:] if line.startswith(' ') else line for line in ui.splitlines())+s[end:]
           ast.parse(s)
           p.write_text(s)
           v=Path('/tmp/tga/version.json')
