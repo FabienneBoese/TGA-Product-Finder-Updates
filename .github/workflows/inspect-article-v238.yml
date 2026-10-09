@@ -12,6 +12,7 @@ jobs:
           python3 - <<'PY'
           s=open('/tmp/app.py').read().splitlines()
           for i,l in enumerate(s):
+           if 145<=i+1<=245: print(f'FULL {i+1}: {l}')
            if any(k in l for k in ['helios','article_no','identifier_source','manufacturer_url','manufacturer_link','product_url','product_family']) and (i<350 or 1600<i<2050):
             print(f'{i+1}: {l[:220]}')
           PY
