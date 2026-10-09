@@ -12,6 +12,7 @@ jobs:
           python3 - <<'PY'
           s=open('/tmp/app.py').read().splitlines()
           for i,l in enumerate(s):
+           if 1890<=i+1<=1978: print(f'FULL {i+1}: {l}')
            if any(k in l for k in ['_scope_map','_scope_label','_selected_label','doc_overview_selection','overview=[]','st.dataframe(ovdf','st.markdown(\'#### Dokumentationsumfang','_scope_item','_scope_id','st.divider()','_tga_page==']):
             if 1650<i<2100: print(f'{i+1}: {l}')
           PY
