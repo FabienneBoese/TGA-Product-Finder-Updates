@@ -32,6 +32,8 @@ jobs:
           lines.insert(caption,indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10))
           s=''.join(lines)
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")
+          print('DUPLICATE_KEYS',[(i+1,line) for i,line in enumerate(s.splitlines()) if 'model_type_{cid}' in line or 'model_type_' in line and 'key=' in line],flush=True)
+          print('AROUND_DETAIL',repr(s.splitlines()[1960:2005]),flush=True)
           ast.parse(s)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
