@@ -79,7 +79,7 @@ def extract_pdf_records(text, model="", dimension="", execution=""):
     for i,line in enumerate(lines):
         if not line: continue
         # Avoid scanning entire catalogue pages; a record is at most two lines.
-        record=" ".join(lines[max(0,i-1):i+2])
+        record=" ".join(lines[max(0,i-1):i+1])
         if not matching_record(record, model, dimension, execution): continue
         for code in codes(line):
             pair=(code,"pdf-line")
