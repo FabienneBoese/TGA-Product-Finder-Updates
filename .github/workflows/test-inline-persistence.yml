@@ -53,6 +53,19 @@ jobs:
             page.wait_for_timeout(700)
             print('EDIT WIDGETS:',page.locator('[role="listbox"]').count(),page.locator('[role="option"]').count(),page.locator('input:visible').count())
             print('EDITOR TEXT:',page.locator('body').inner_text()[-1600:])
+            page.get_by_role('option',name='ATEX-Ausführung').click(timeout=10000)
+            page.wait_for_timeout(1800)
+            saved=db.execute("SELECT doc_variant,article_no FROM components WHERE manufacturer='TROX'").fetchone()
+            print('SAVED VARIANT:',saved)
+            assert saved[0]=='ATEX-Ausführung',saved
+            assert not saved[1],saved
+            page.reload()
+            page.wait_for_timeout(2000)
+            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
+            page.wait_for_timeout(2000)
+            saved_again=db.execute("SELECT doc_variant FROM components WHERE manufacturer='TROX'").fetchone()[0]
+            assert saved_again=='ATEX-Ausführung',saved_again
+            print('PASS: browser selected ATEX; SQLite persisted after reload; article unchanged')
             print('PASS browser renders inline documentation group')
             browser.close()
           finally:
