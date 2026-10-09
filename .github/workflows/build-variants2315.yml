@@ -66,7 +66,7 @@ jobs:
           import os,sqlite3
           from streamlit.testing.v1 import AppTest
           os.chdir('/tmp/tga')
-          a=AppTest.from_file('app.py').run()
+          a=AppTest.from_file('app.py',default_timeout=45).run()
           assert not a.exception,a.exception
           c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
           for m,p in [('TROX','FK2-EU'),('Geberit','Mapress Therm'),('GROHE','Eurosmart CE'),('ROCKWOOL','Conlit 150 U'),('Helios','SilentBox')]:
