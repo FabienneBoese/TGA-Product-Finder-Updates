@@ -1,0 +1,103 @@
+name: Publish v2.3.8 Overview Crash Fix
+on:
+  push:
+    paths: ['.github/workflows/publish-v238.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga238
+          unzip -q TGA_Product_Finder_Update_v2.3.7.zip -d /tmp/tga238
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga238/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.7"')==1
+          s=s.replace('APP_VERSION = "2.3.7"','APP_VERSION = "2.3.8"',1)
+          # Ensure the actual dataframe selection resolves to a product before use.
+          lines=s.splitlines(keepends=True)
+          lookup=next(i for i,line in enumerate(lines) if '_scope_item=_scope_map[_scope_label]' in line)
+          caption=next(i for i,line in enumerate(lines) if "st.caption('Ausgewähltes Produkt: '+_scope_label)" in line)
+          assert caption<lookup
+          indent=lines[lookup][:len(lines[lookup])-len(lines[lookup].lstrip())]
+          lines.insert(caption,indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10))
+          s=''.join(lines)
+          assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          v=Path('/tmp/tga238/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.8'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga238_test_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga238')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          db=sqlite3.connect('/tmp/tga238_test_data/tga_finder.db')
+          db.executemany("INSERT INTO components(project,manufacturer,product,model_type,article_no,confidence,status,docs_searched) VALUES(?,?,?,?,?,?,?,?)",[
+           ('Testprojekt','Helios','Ventilatorbox','SB 125 A','',100,'Prüfen',0),
+           ('Testprojekt','TROX','Brandschutzklappe','FK2-EU','',90,'Prüfen',0)])
+          db.commit()
+          at.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not at.exception,at.exception
+          assert len(at.dataframe)>=1
+          df=at.dataframe[0].value
+          assert len(df)==2,df
+          assert df.iloc[0]['Artikelnummer']=='09506',df.to_string()
+          assert df.iloc[1]['Typ / Modell']=='FK2-EU',df.to_string()
+          assert any('Helios' in x.value and 'Ausgewähltes Produkt:' in x.value for x in at.caption)
+          print('PASS: actual overview loads, auto Helios article appears, default Helios details')
+          at.session_state['doc_overview_selection']={'selection':{'rows':[1]}}
+          at.run()
+          assert not at.exception,at.exception
+          captions=[x.value for x in at.caption if 'Ausgewähltes Produkt:' in x.value]
+          assert len(captions)==1 and 'TROX' in captions[0],captions
+          assert 'Helios' not in captions[0],captions
+          print('PASS: selected second table row displays TROX details',captions)
+          at.radio[-1].set_value('Einzelartikel / Variante prüfen').run()
+          assert not at.exception,at.exception
+          save=next(b for b in at.button if b.label=='Dokumentationsumfang speichern')
+          save.click().run()
+          assert not at.exception,at.exception
+          scopes=db.execute("SELECT manufacturer,documentation_scope FROM components ORDER BY id").fetchall()
+          assert scopes[0][1]=='Produktfamilie' and scopes[1][1]=='Einzelartikel / Variante prüfen',scopes
+          print('PASS: save updates selected TROX product only',scopes)
+          at.session_state['doc_overview_selection']={'selection':{'rows':[0]}}
+          at.run()
+          assert not at.exception,at.exception
+          captions=[x.value for x in at.caption if 'Ausgewähltes Produkt:' in x.value]
+          assert len(captions)==1 and 'Helios' in captions[0],captions
+          print('PASS: switching back restores Helios details')
+          PY
+          (cd /tmp/tga238 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.8.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.8.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.8.zip
+          git commit -m 'Build v2.3.8 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.8.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.8','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.8.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.8'
+          git pull --rebase origin main
+          git push origin HEAD:main
