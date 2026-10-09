@@ -28,6 +28,7 @@ jobs:
           caption=next(i for i,line in enumerate(lines) if "st.caption('Ausgewähltes Produkt: '+_scope_label)" in line)
           assert caption<lookup
           indent=lines[lookup][:len(lines[lookup])-len(lines[lookup].lstrip())]
+          lines[caption]=indent+lines[caption].lstrip()
           lines.insert(caption,indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10))
           s=''.join(lines)
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")
