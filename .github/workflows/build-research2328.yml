@@ -32,20 +32,20 @@ jobs:
           start=s.index('            # Only bounded product records:')
           end=s.index('        except requests.RequestException:continue',start)
           replacement='''            # Search product-local structured HTML records, never entire pages.
-            is_pdf = "pdf" in r.headers.get("Content-Type","").lower() or r.url.lower().split("?")[0].endswith(".pdf")
-            records = extract_pdf_records(txt, model=model, dimension=dimension) if is_pdf else extract_html_records(r.text, model=model, dimension=dimension)
-            for code, evidence in records:
-                if (code,url) not in candidates:candidates.append((code,url))
-            if not is_pdf:
-                for pdf_url in extract_html_links(r.text, url, domain, limit=5):
-                    try:
-                        pdf=sess.get(pdf_url,headers=_HEADERS,timeout=10,allow_redirects=False)
-                        if pdf.status_code!=200 or not _tga_official(pdf.url,domain):continue
-                        pdf_text=_tga_source_text(pdf)
-                        for code, evidence in extract_pdf_records(pdf_text,model=model,dimension=dimension):
-                            if (code,pdf_url) not in candidates:candidates.append((code,pdf_url))
-                    except requests.RequestException:continue
-'''
+                      is_pdf = "pdf" in r.headers.get("Content-Type","").lower() or r.url.lower().split("?")[0].endswith(".pdf")
+                      records = extract_pdf_records(txt, model=model, dimension=dimension) if is_pdf else extract_html_records(r.text, model=model, dimension=dimension)
+                      for code, evidence in records:
+                          if (code,url) not in candidates:candidates.append((code,url))
+                      if not is_pdf:
+                          for pdf_url in extract_html_links(r.text, url, domain, limit=5):
+                              try:
+                                  pdf=sess.get(pdf_url,headers=_HEADERS,timeout=10,allow_redirects=False)
+                                  if pdf.status_code!=200 or not _tga_official(pdf.url,domain):continue
+                                  pdf_text=_tga_source_text(pdf)
+                                  for code, evidence in extract_pdf_records(pdf_text,model=model,dimension=dimension):
+                                      if (code,pdf_url) not in candidates:candidates.append((code,pdf_url))
+                              except requests.RequestException:continue
+          '''
           import textwrap
           s=s[:start]+textwrap.indent(textwrap.dedent(replacement),'            ')+s[end:]
           # New helpers replace previous copies, avoiding shadowing.
