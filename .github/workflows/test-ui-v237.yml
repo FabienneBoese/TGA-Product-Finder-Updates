@@ -1,0 +1,30 @@
+name: Test real v237 UI interaction
+on:
+  push:
+    paths: ['.github/workflows/test-ui-v237.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir -p /tmp/uiapp
+          unzip -q TGA_Product_Finder_Update_v2.3.7.zip -d /tmp/uiapp
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/ui_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/uiapp')
+          at=AppTest.from_file('app.py',default_timeout=40).run()
+          print('START_EXCEPTIONS',list(at.exception))
+          print('RADIOS',[(r.label,r.value) for r in at.radio])
+          print('SELECTBOXES',[(r.label,r.value) for r in at.selectbox])
+          print('DB',os.path.exists('/tmp/ui_data/tga_finder.db'))
+          db=sqlite3.connect('/tmp/ui_data/tga_finder.db')
+          print('SCHEMA',db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='components'").fetchone())
+          print('PROJECTS',db.execute('SELECT DISTINCT project FROM components').fetchall())
+          print('DATAFRAME',len(at.dataframe),[x.value.shape for x in at.dataframe])
+          print('DF_METHODS',[x for x in dir(at.dataframe[0]) if not x.startswith('_')] if len(at.dataframe) else [])
+          print('SESSION_KEYS',list(at.session_state))
+          PY
