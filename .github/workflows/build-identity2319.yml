@@ -21,9 +21,9 @@ jobs:
           s=s.replace("status='verifiziert' if candidate and verified else ('Kandidat – Herstellerprüfung erforderlich' if candidate else 'keine Artikelnummer bestätigt')","status='aus Bestandsdaten – Quellenprüfung offen' if candidate and verified else ('Kandidat – Herstellerprüfung erforderlich' if candidate else 'keine Artikelnummer bestätigt')",1)
           s=s.replace("level='Einzelartikel' if candidate and verified else ('Variante / Typ' if model or dim else 'Produktfamilie / System')","level='Einzelartikel (vorläufig)' if candidate and verified else ('Variante / Typ' if model or dim else 'Produktfamilie / System')",1)
           anchor="            st.dataframe(_ident_rows,hide_index=True,width='stretch',height=max(250,min(900,38*(len(_ident_rows)+1))))"
-          assert s.count(anchor)==1
+          assert s.count('st.dataframe(_ident_rows')==1
           s=s.replace("             _ident_rows.append({'ID':_cid","             _ident_rows.append({'Erkennungsquelle':'Bestandsdaten / explizites Feld' if _article else ('Typ-/Modellfeld' if _model else 'Produktbezeichnung'),'ID':_cid",1)
-          s=s.replace(anchor,anchor+"\n            st.download_button('Diagnose als CSV exportieren',data=__import__('csv').writer if False else _ident_csv(_ident_rows),file_name='TGA_Produkterkennung_Diagnose.csv',mime='text/csv')",1)
+          s=s.replace(next(line for line in s.splitlines() if 'st.dataframe(_ident_rows' in line),next(line for line in s.splitlines() if 'st.dataframe(_ident_rows' in line)+"\n            st.download_button('Diagnose als CSV exportieren',data=__import__('csv').writer if False else _ident_csv(_ident_rows),file_name='TGA_Produkterkennung_Diagnose.csv',mime='text/csv')",1)
           helper="""def _ident_csv(rows):
               import csv,io
               f=io.StringIO()
