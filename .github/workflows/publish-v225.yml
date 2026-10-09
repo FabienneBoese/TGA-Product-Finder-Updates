@@ -22,7 +22,7 @@ jobs:
           assert s.count('APP_VERSION = "2.2.4"')==1
           s=s.replace('APP_VERSION = "2.2.4"','APP_VERSION = "2.2.5"',1)
           # Keep an audit trail of the originally supplied Excel identifier.
-          anchor="  if 'model_type' not in ccols: c.execute('ALTER TABLE components ADD COLUMN model_type TEXT DEFAULT \"\"')"
+          anchor=next(line for line in s.splitlines() if "if 'model_type' not in ccols:" in line)
           assert s.count(anchor)==1
           s=s.replace(anchor,anchor+"\n  if 'identifier_source' not in ccols: c.execute('ALTER TABLE components ADD COLUMN identifier_source TEXT DEFAULT \"\"')\n  if 'product_family' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_family TEXT DEFAULT \"\"')",1)
           # Before any automatic migration, save original value. Do not discard families.
