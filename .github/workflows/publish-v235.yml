@@ -32,7 +32,7 @@ jobs:
           anchor=next(line for line in s.splitlines(keepends=True) if "Dokumentenübersicht" in line and "_tga_page" in line)
           assert s.count(anchor)==1
           # The overview already has a project-specific connection and current rows.
-          s=s.replace(anchor,anchor+'\\n'+misplaced,1)
+          s=s.replace(anchor,anchor+chr(10)+misplaced,1)
           # Connect editor to selected table row; no second, conflicting selectbox.
           old=next(line for line in s.splitlines(keepends=True) if '_scope_label=st.selectbox(' in line)
           assert s.count(old)==1
