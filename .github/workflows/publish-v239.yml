@@ -43,7 +43,9 @@ jobs:
           s=s.replace(marker,helper+marker,1)
           # Run recovery on existing projects in the overview, not just during imports.
           needle="  rows=con.execute(\"SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id\",(project,)).fetchall()"
-          assert s.count(needle)==1
+          matches=[line for line in s.splitlines() if 'rows=con.execute' in line and 'SELECT id,manufacturer,product,article_no,confidence,status,docs_searched' in line]
+          assert len(matches)==1,matches
+          needle=matches[0]
           enrichment=chr(10).join([
            '  _article_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no,identifier_source,product_family FROM components WHERE project=?",(project,)).fetchall()',
            '  for _aid,_am,_ap,_at,_an,_as,_af in _article_rows:',
@@ -53,6 +55,8 @@ jobs:
            '  con.commit()',
            ''
           ])+chr(10)
+          indentation=needle[:len(needle)-len(needle.lstrip())]
+          enrichment=''.join(indentation+line.lstrip()+chr(10) if line.startswith('  _article_rows=') or line.startswith('  for _aid,') or line.startswith('  con.commit()') else indentation+' '+line.lstrip()+chr(10) if line.startswith('   _recovered=') or line.startswith('   if _recovered:') else indentation+'  '+line.lstrip()+chr(10) for line in enrichment.splitlines() if line.strip())
           s=s.replace(needle,enrichment+needle,1)
           ast.parse(s)
           p.write_text(s,encoding='utf-8')
