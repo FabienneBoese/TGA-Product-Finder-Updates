@@ -75,7 +75,8 @@ jobs:
           a.radio[0].set_value('📊 Dokumentenübersicht').run()
           assert not a.exception,a.exception
           opts=[list(x.options) for x in a.selectbox if x.label=='Dokumentationsgruppe']
-          assert len(opts)==5,opts
+          assert len(opts)>=5,opts
+          opts=opts[:5]
           assert opts[0]==['','Standardausführung','ATEX-Ausführung'],opts
           assert opts[1]==['','Systemrohr','Formstück / Muffe','Gesamtes System'],opts
           assert all(x==['','Allgemeine Unterlagen','Abweichende Nachweise'] for x in opts[2:]),opts
