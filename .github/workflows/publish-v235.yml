@@ -1,0 +1,108 @@
+name: Publish v2.3.5 Helios Auto Identification
+on:
+  push:
+    paths: ['.github/workflows/publish-v235.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga235
+          unzip -q TGA_Product_Finder_Update_v2.3.3.zip -d /tmp/tga235
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga235/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.3"')==1
+          s=s.replace('APP_VERSION = "2.3.3"','APP_VERSION = "2.3.5"',1)
+          # Fix the actual root cause: enrichment was accidentally nested inside
+          # the unrelated Project Uploads page, so it never ran in the overview.
+          begin=s.index('  # Exact Helios match only; existing article numbers are protected.')
+          end=s.index(" if _tga_page=='📊 Dokumentenübersicht':",begin)
+          misplaced=s[begin:end]
+          assert '_helios_rows=' in misplaced and 'rows=con.execute' in misplaced
+          s=s[:begin]+s[end:]
+          anchor=" if _tga_page=='📊 Dokumentenübersicht':"
+          assert s.count(anchor)==1
+          # The overview already has a project-specific connection and current rows.
+          s=s.replace(anchor,anchor+'\\n'+misplaced,1)
+          # Connect editor to selected table row; no second, conflicting selectbox.
+          old="    _scope_label=st.selectbox('Produkt oder Produktfamilie auswählen',_scope_labels,index=_scope_labels.index(_selected_label) if _selected_label in _scope_labels else 0)"
+          assert s.count(old)==1
+          new="""    _scope_label=_selected_label if _selected_label in _scope_map else _scope_labels[0]
+    st.caption('Ausgewählte Tabellenzeile: '+_scope_label+' · Zum Wechseln eine andere Tabellenzeile anklicken.')"""
+          s=s.replace(old,new,1)
+          s=s.replace("   st.markdown('#### Dokumentationsumfang festlegen')","   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')",1)
+          # Existing values and unrelated manufacturers remain untouched.
+          assert 'helios_official_article(_hm,_hp,_ht,_ha)' in s
+          assert s.index('_helios_rows=')>s.index(anchor)
+          assert 'st.selectbox(\'Produkt oder Produktfamilie auswählen\'' not in s
+          assert 'doc_overview_selection' in s
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          # Regression test: execute the REAL enrichment block against a sample project DB.
+          import sqlite3
+          con=sqlite3.connect(':memory:')
+          con.execute('CREATE TABLE components(id INTEGER PRIMARY KEY,project TEXT,manufacturer TEXT,product TEXT,model_type TEXT,article_no TEXT,confidence INTEGER,status TEXT,docs_searched INTEGER)')
+          fixtures=[
+           (8,'Test','Helios','Helios Ventilatorbox','SB 125 A',''),
+           (9,'Test','Helios','Helios Ventilatorbox','SB 125 C',''),
+           (10,'Test','Helios','Helios Ventilatorbox','SB 125 A','99999'),
+           (11,'Test','TROX','Brandschutzklappe','SB 125 A',''),
+           (12,'Other','Helios','Helios Ventilatorbox','SB 125 A','')]
+          con.executemany('INSERT INTO components(id,project,manufacturer,product,model_type,article_no) VALUES(?,?,?,?,?,?)',fixtures)
+          tree=ast.parse(s)
+          fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='helios_official_article')
+          ns={'re':re}
+          exec(compile(ast.Module(body=[fn],type_ignores=[]),'<resolver>','exec'),ns)
+          project='Test'
+          test_block=misplaced
+          # Only the actual enrichment statements; skip overview rows reassignment.
+          test_block=test_block[:test_block.index('  rows=con.execute')]
+          exec(compile(test_block,'<real-enrichment>','exec'),{'con':con,'project':project,'helios_official_article':ns['helios_official_article']})
+          found=dict(con.execute('SELECT id,article_no FROM components'))
+          assert found=={8:'09506',9:'',10:'99999',11:'',12:''},found
+          con.close()
+          print('PASS: Real SQLite sample project enrichment; zero overwrite; model variants; other project')
+          v=Path('/tmp/tga235/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.5'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('PASS: Helios identifier tests')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga235')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga235 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.5.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.5.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.5.zip
+          git commit -m 'Build v2.3.5 Helios'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.5.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.5','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.5.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.5'
+          git pull --rebase origin main
+          git push origin HEAD:main
