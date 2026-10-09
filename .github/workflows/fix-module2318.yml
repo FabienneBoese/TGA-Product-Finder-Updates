@@ -1,0 +1,58 @@
+name: Fix missing identity module 2318
+on:
+  push:
+    paths: ['.github/workflows/fix-module2318.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.17.zip -d /tmp/tga
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text()
+          assert s.count('from product_identity_engine import analyze as _analyze_product_identity')==1
+          module=Path('/tmp/tga/product_identity_engine.py').read_text()
+          # Bundle the parser directly into app.py: existing Windows updater only replaces app.py.
+          module=module.replace('from dataclasses import dataclass,asdict','from dataclasses import dataclass,asdict')
+          lines=module.splitlines()
+          assert lines[0].startswith('"""')
+          module='\n'.join(lines)
+          marker='  from product_identity_engine import analyze as _analyze_product_identity'
+          # Put definitions at module scope before Streamlit UI and import-free call in UI.
+          s=module+'\n\n'+s.replace(marker,'  _analyze_product_identity = analyze',1)
+          s=s.replace('APP_VERSION = "2.3.17"','APP_VERSION = "2.3.18"',1)
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.18';v.write_text(json.dumps(d))
+          print('PASS syntax, parser bundled in app.py')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          c.execute("INSERT INTO components(project,manufacturer,product,model_type,confidence,status,docs_searched) VALUES('Testprojekt','Geberit','Mapress Therm','DN 20',90,'Prüfen',0)")
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Universelle Produkterkennung' in x.label for x in a.expander)
+          print('PASS Streamlit document overview without separate module')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.18.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.18.zip
+          git commit -m 'Fix Windows updater missing parser module 2.3.18'
+          git pull --rebase origin main
+          git push origin HEAD:main
