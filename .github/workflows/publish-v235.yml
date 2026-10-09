@@ -68,6 +68,7 @@ jobs:
           fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='helios_official_article')
           ns={'re':re}
           exec(compile(ast.Module(body=[fn],type_ignores=[]),'<resolver>','exec'),ns)
+          print('RESOLVER_DEBUG',repr(s[fn_start:fn_end]),ns['helios_official_article']('Helios','Helios Ventilatorbox','SB 125 A',''))
           project='Test'
           test_block=misplaced
           # Only the actual enrichment statements; skip overview rows reassignment.
