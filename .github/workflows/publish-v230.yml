@@ -51,7 +51,9 @@ jobs:
           replacement=replacement.replace(",key='doc_scope_component')",")")
           import textwrap
           _prefix=s[s.rfind('\n',0,s.index(old))+1:s.index(old)]
-          replacement=textwrap.dedent(replacement).rstrip('\n').replace('\n','\n'+_prefix)
+          _rl=replacement.rstrip('\n').splitlines()
+          _base=len(_rl[1])-len(_rl[1].lstrip())
+          replacement=_rl[0]+''.join('\n'+_prefix+line[_base:] for line in _rl[1:])
           s=s.replace(old,replacement,1)
           # Suggest category and dimensions from the designation, without auto-saving
           # or changing existing user-entered values.
