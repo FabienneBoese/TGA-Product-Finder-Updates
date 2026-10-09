@@ -1,0 +1,17 @@
+name: Inspect overview v236
+on:
+  push:
+    paths: ['.github/workflows/inspect-v236.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -p TGA_Product_Finder_Update_v2.3.6.zip app.py > /tmp/app.py
+          python3 - <<'PY'
+          s=open('/tmp/app.py').read().splitlines()
+          for i,l in enumerate(s):
+           if any(k in l for k in ['_scope_map','_scope_label','_selected_label','doc_overview_selection','overview=[]','st.dataframe(ovdf','st.markdown(\'#### Dokumentationsumfang','_scope_item','_scope_id','st.divider()','_tga_page==']):
+            if 1650<i<2100: print(f'{i+1}: {l}')
+          PY
