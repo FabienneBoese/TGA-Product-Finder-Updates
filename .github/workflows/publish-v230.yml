@@ -67,7 +67,9 @@ jobs:
             st.caption('Vorschlag aus Produktbezeichnung (bitte vor dem Speichern prüfen): '+(_suggested_category or 'Bauteilart offen')+' | '+(_suggested_dimensions or 'Dimension offen'))
           """
           import textwrap
-          helper='\n'.join(anchor[:len(anchor)-len(anchor.lstrip())]+line for line in textwrap.dedent(helper).splitlines())+'\n'
+          _hl=helper.splitlines()
+          _hbase=len(_hl[0])-len(_hl[0].lstrip())
+          helper='\n'.join(anchor[:len(anchor)-len(anchor.lstrip())]+line[_hbase:] for line in _hl)+'\n'
           s=s.replace(anchor,helper+anchor,1)
           s=s.replace("value=_scope_item[5] or '',key=f'doc_scope_category_{_scope_id}'","value=_scope_item[5] or _suggested_category,key=f'doc_scope_category_{_scope_id}'",1)
           s=s.replace("value=_scope_item[6] or '',key=f'doc_scope_dimensions_{_scope_id}'","value=_scope_item[6] or _suggested_dimensions,key=f'doc_scope_dimensions_{_scope_id}'",1)
