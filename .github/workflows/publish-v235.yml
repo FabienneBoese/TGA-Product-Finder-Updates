@@ -25,7 +25,6 @@ jobs:
           # Fix the actual root cause: enrichment was accidentally nested inside
           # the unrelated Project Uploads page, so it never ran in the overview.
           begin=s.index(next(line for line in s.splitlines(keepends=True) if '_helios_rows=con.execute' in line))
-          begin=s.rfind('\\n',0,begin)+1
           end=s.index(next(line for line in s[begin:].splitlines(keepends=True) if 'Dokumentenübersicht' in line and '_tga_page' in line),begin)
           misplaced=s[begin:end]
           assert '_helios_rows=' in misplaced and 'rows=con.execute' in misplaced
