@@ -34,7 +34,7 @@ jobs:
               return '\\ufeff'+f.getvalue()
           """
           # At module scope, before the app's Streamlit imports.
-          s=helper+'\n'+s
+          import textwrap\n          s=textwrap.dedent(helper)+'\n'+s
           ast.parse(s);p.write_text(s)
           v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.19';v.write_text(json.dumps(d))
           print('PASS syntax')
