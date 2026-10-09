@@ -43,6 +43,17 @@ jobs:
             print('TABLE EDITOR:',page.locator('[data-testid="stDataFrame"]').count(),page.locator('[data-testid="stDataEditor"]').count())
             print('BODY SNIPPET:',page.locator('body').inner_text()[-2500:])
             assert page.get_by_text('Dokumentationsgruppe',exact=False).count()>0
+            grid=page.locator('[data-testid="stDataFrame"]').first
+            box=grid.bounding_box()
+            print('GRID BOX:',box)
+            print('GRID HTML:',grid.inner_html()[:2600])
+            grid.click(position={'x':min(200,box['width']-20),'y':min(65,box['height']-10)})
+            page.keyboard.press('End')
+            page.keyboard.press('ArrowDown')
+            page.keyboard.press('Enter')
+            page.wait_for_timeout(700)
+            print('AFTER EDIT:',page.locator('body').inner_text()[-1000:])
+            print('VISIBLE INPUTS:',page.locator('input:visible').count())
             print('PASS browser renders inline documentation group')
             browser.close()
           finally:
