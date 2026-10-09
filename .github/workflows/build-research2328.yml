@@ -1,0 +1,79 @@
+name: Build verified PDF research 2328
+on:
+  push:
+    paths: ['.github/workflows/build-research2328.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_article_identity_records.py' -v
+          mkdir -p /tmp/tga2328
+          unzip -q TGA_Product_Finder_Update_v2.3.27.zip -d /tmp/tga2328
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga2328/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert "APP_VERSION = \"2.3.27\"" in s
+          # Pass explicit model and dimension from each imported component.
+          assert "_tga_bulk_candidates(_maker,_q)" in s
+          s=s.replace("_tga_bulk_candidates(_maker,_q)", "_tga_bulk_candidates(_maker,_q,_r.get('Typ / Modell',''),_r.get('Dimension',''))",1)
+          assert "def _tga_bulk_candidates(maker, query):" in s
+          s=s.replace("def _tga_bulk_candidates(maker, query):", "def _tga_bulk_candidates(maker, query, model='', dimension=''):",1)
+          assert "_tga_research_online(maker,query)" in s
+          s=s.replace("_tga_research_online(maker,query)", "_tga_research_online(maker,query,model=model,dimension=dimension)",1)
+          # Replace only the existing bounded HTML extraction block.
+          start=s.index('            # Only bounded product records:')
+          end=s.index('        except requests.RequestException:continue',start)
+          replacement='''            # Search product-local structured HTML records, never entire pages.
+            is_pdf = "pdf" in r.headers.get("Content-Type","").lower() or r.url.lower().split("?")[0].endswith(".pdf")
+            records = extract_pdf_records(txt, model=model, dimension=dimension) if is_pdf else extract_html_records(r.text, model=model, dimension=dimension)
+            for code, evidence in records:
+                if (code,url) not in candidates:candidates.append((code,url))
+            if not is_pdf:
+                for pdf_url in extract_html_links(r.text, url, domain, limit=5):
+                    try:
+                        pdf=sess.get(pdf_url,headers=_HEADERS,timeout=10,allow_redirects=False)
+                        if pdf.status_code!=200 or not _tga_official(pdf.url,domain):continue
+                        pdf_text=_tga_source_text(pdf)
+                        for code, evidence in extract_pdf_records(pdf_text,model=model,dimension=dimension):
+                            if (code,pdf_url) not in candidates:candidates.append((code,pdf_url))
+                    except requests.RequestException:continue
+'''
+          import textwrap
+          s=s[:start]+textwrap.indent(textwrap.dedent(replacement),'            ')+s[end:]
+          # New helpers replace previous copies, avoiding shadowing.
+          module=Path('research/article_identity_records.py').read_text(encoding='utf-8')
+          s=module+'\n'+s
+          s=s.replace('APP_VERSION = "2.3.27"','APP_VERSION = "2.3.28"',1)
+          ast.parse(s);p.write_text(s,encoding='utf-8')
+          v=Path('/tmp/tga2328/version.json');d=json.loads(v.read_text());d['version']='2.3.28';v.write_text(json.dumps(d))
+          print('PASS integrated app syntax')
+          PY
+          TGA_DATA_DIR=/tmp/tga2328_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2328')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          print('PASS Streamlit startup')
+          PY
+          (cd /tmp/tga2328 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.28.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.28.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.28','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.28.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.28.zip update_manifest.json
+          git commit -m 'Release model-scoped HTML and PDF article research 2.3.28'
+          git pull --rebase origin main
+          git push origin HEAD:main
