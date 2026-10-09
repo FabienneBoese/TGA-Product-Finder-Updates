@@ -1,0 +1,115 @@
+name: Publish v2.3.12 TROX exact catalogue
+on:
+  push:
+    paths: ['.github/workflows/publish-v2312.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga2312
+          unzip -q TGA_Product_Finder_Update_v2.3.11.zip -d /tmp/tga2312
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga2312/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.11"')==1
+          s=s.replace('APP_VERSION = "2.3.11"','APP_VERSION = "2.3.12"',1)
+          marker='def db():'
+          assert s.count(marker)==1
+          helper=chr(10).join([
+           'def infer_product_identity(manufacturer,product,model_type="",article_no="",product_family=""):',
+           ' import re',
+           ' maker=str(manufacturer or "").casefold()',
+           ' text=" ".join(str(x or "") for x in (product,model_type)).upper()',
+           ' if str(article_no or "").strip():return "Eindeutiger Einzelartikel"',
+           ' if str(product_family or "").strip():return "Produktfamilie"',
+           ' if "trox" in maker and re.search(r"\\b(?:FK2-EU|TVE|FKRS-EU)\\b",text):return "Produktfamilie" if not re.search(r"FK2-EU\\s*/",text) else "Variante ungeklärt"',
+           ' if "geberit" in maker and "MAPRESS" in text:return "Produktfamilie"',
+           ' if "grohe" in maker and "EUROSMART CE" in text:return "Produktfamilie"',
+           ' if "rockwool" in maker and ("CONLIT" in text or re.search(r"\\b800\\b",text)):return "Produktfamilie"',
+           ' return "Variante ungeklärt"',
+           '',
+           ''
+          ])
+          s=s.replace(marker,helper+marker,1)
+          anchor="  if 'documentation_scope' not in ccols:"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,"  if 'product_identity' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_identity TEXT DEFAULT \"\"')"+chr(10)+anchor,1)
+          anchor='  rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()'
+          assert s.count(anchor)==1
+          block=chr(10).join([
+           '  _identity_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no,product_family FROM components WHERE project=?",(project,)).fetchall()',
+           '  for _iid,_im,_ip,_it,_ia,_if in _identity_rows:',
+           '   _identity=infer_product_identity(_im,_ip,_it,_ia,_if)',
+           '   con.execute("UPDATE components SET product_identity=? WHERE id=?",(_identity,_iid))',
+           '  con.commit()',
+           ''
+          ])
+          s=s.replace(anchor,block+chr(10)+anchor,1)
+          display="overview.append({'Status':"
+          assert s.count(display)==1
+          s=s.replace(display,"_identity=infer_product_identity(om,op,_model,oa)"+chr(10)+"    "+display,1)
+          s=s.replace("'Hersteller':om,'Bezeichnung':_display_name,","'Hersteller':om,'Bezeichnung':_display_name,'Produktidentität':_identity,",1)
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          print('PASS: product identity logic integrated')
+          v=Path('/tmp/tga2312/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.12'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga2312_test_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2312')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          db=sqlite3.connect('/tmp/tga2312_test_data/tga_finder.db')
+          fixtures=[('Helios','Ventilatorbox','SB 125 C'),('TROX','Brandschutzklappe','FK2-EU'),('GROHE','Eurosmart CE',''),('Geberit','Mapress Therm','Muffe 22 mm'),('ROCKWOOL','Conlit 150 U','')]
+          db.executemany("INSERT INTO components(project,manufacturer,product,model_type,confidence,status,docs_searched) VALUES('Testprojekt',?,?,?,90,'Prüfen',0)",fixtures)
+          db.commit()
+          at.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not at.exception,at.exception
+          found=db.execute("SELECT manufacturer,article_no,product_identity FROM components ORDER BY id").fetchall()
+          assert found[0][1:] == ('09562','Eindeutiger Einzelartikel'),found
+          assert all(x[2]=='Produktfamilie' for x in found[1:]),found
+          assert 'Produktidentität' in at.dataframe[0].value.columns
+          print('PASS: populated UI shows product identity',found)
+          at.session_state['doc_overview_selection']={'selection':{'rows':[1]}}
+          at.run()
+          assert not at.exception,at.exception
+          next(r for r in at.radio if r.label=='Dokumentationsumfang').set_value('Einzelartikel / Variante prüfen').run()
+          next(b for b in at.button if b.label=='Dokumentationsumfang speichern').click().run()
+          assert not at.exception,at.exception
+          assert db.execute("SELECT product_identity,documentation_scope FROM components WHERE manufacturer='TROX'").fetchone()==('Produktfamilie','Einzelartikel / Variante prüfen')
+          print('PASS: independent documentation scope')
+          PY
+          (cd /tmp/tga2312 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.12.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.12.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.12.zip
+          git commit -m 'Build v2.3.12 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.12.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.12','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.12.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.12'
+          git pull --rebase origin main
+          git push origin HEAD:main
