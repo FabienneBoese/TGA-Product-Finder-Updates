@@ -1,0 +1,138 @@
+name: Publish v2.3.11 TROX exact catalogue
+on:
+  push:
+    paths: ['.github/workflows/publish-v2311.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga2311
+          unzip -q TGA_Product_Finder_Update_v2.3.10.zip -d /tmp/tga2311
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga2311/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.10"')==1
+          s=s.replace('APP_VERSION = "2.3.10"','APP_VERSION = "2.3.11"',1)
+          # Exact TROX Austrian stock article numbers from the official TROX catalogue.
+          import pprint
+          trox={
+           'FK2-EU/AT/200X200X500/00/Z00':'034002020',
+           'FK2-EU/AT/300X200X500/00/Z00':'034002030',
+           'FK2-EU/AT/400X200X500/00/Z00':'034002040',
+           'FK2-EU/AT/500X200X500/00/Z00':'034002050',
+           'FK2-EU/AT/600X200X500/00/Z00':'034002060',
+           'FK2-EU/AT/800X200X500/00/Z00':'034002080',
+           'FK2-EU/AT/300X300X500/00/Z00':'034003030',
+           'FK2-EU/AT/400X300X500/00/Z00':'034003040',
+           'FK2-EU/AT/500X300X500/00/Z00':'034003050',
+           'FK2-EU/AT/600X300X500/00/Z00':'034003060',
+           'FK2-EU/AT/800X300X500/00/Z00':'034003080',
+           'FK2-EU/AT/1000X300X500/00/Z00':'034003100',
+           'FK2-EU/AT/400X400X500/00/Z00':'034004040',
+           'FK2-EU/AT/500X400X500/00/Z00':'034004050'
+          }
+          source='https://cdn.trox.de/5d6c682122d817e8/2eced3bc54d9/TROX_Lagerartikel_Wien.pdf'
+          marker='def helios_official_article('
+          assert s.count(marker)==1
+          lines=[
+           'TROX_FK2_ARTICLES='+pprint.pformat(trox,sort_dicts=True),
+           'TROX_FK2_SOURCE='+repr(source),
+           '',
+           'def trox_exact_article(manufacturer,product,model_type="",article_no=""):',
+           ' import re',
+           ' if "trox" not in str(manufacturer or "").casefold():return None',
+           ' text=" ".join(str(v or "") for v in (product,model_type)).upper()',
+           ' keys={re.sub(r"\\s+","",v) for v in re.findall(r"FK2-EU\\s*/\\s*AT\\s*/\\s*\\d{3,4}\\s*[X×]\\s*\\d{3,4}\\s*[X×]\\s*500\\s*/\\s*00\\s*/\\s*Z00",text)}',
+           ' keys={v.replace("×","X") for v in keys}',
+           ' if len(keys)!=1:return None',
+           ' article=TROX_FK2_ARTICLES.get(next(iter(keys)))',
+           ' if not article:return None',
+           ' existing=str(article_no or "").strip()',
+           ' return {"article":article,"conflict":bool(existing and existing.lstrip("0")!=article.lstrip("0")),"source":TROX_FK2_SOURCE}',
+           '',
+           'def manufacturer_verified_article(manufacturer,product,model_type="",article_no=""):',
+           ' return helios_official_article(manufacturer,product,model_type,article_no) or trox_exact_article(manufacturer,product,model_type,article_no)',
+           '',
+           ''
+          ]
+          s=s.replace(marker,chr(10).join(lines)+marker,1)
+          target='_candidate=helios_official_article(_hm,_hp,_ht,_ha)'
+          assert s.count(target)==1
+          s=s.replace(target,'_candidate=manufacturer_verified_article(_hm,_hp,_ht,_ha)',1)
+          # Only fill empty article numbers; do not overwrite or infer from family names.
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          ns={}
+          tree=ast.parse(s)
+          selected=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='trox_exact_article' or isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id.startswith('TROX_FK2_') for t in n.targets)]
+          exec(compile(ast.Module(body=selected,type_ignores=[]),'<trox>','exec'),ns)
+          f=ns['trox_exact_article']
+          assert f('TROX','Brandschutzklappe','FK2-EU/AT/200x200x500/00/Z00')['article']=='034002020'
+          assert f('TROX','Brandschutzklappe','FK2-EU/AT/400x400x500/00/Z00')['article']=='034004040'
+          assert f('TROX','Brandschutzklappe','FK2-EU') is None
+          assert f('TROX','Brandschutzklappe','FK2-EU/DE/200x200x500/00/Z00') is None
+          assert f('TROX','Brandschutzklappe','FK2-EU/AT/200x200x500/00/Z00','9999')['conflict']
+          print('PASS: 14 exact TROX AT catalogue variants and strict country/size guards')
+          v=Path('/tmp/tga2311/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.11'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga2311_test_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2311')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          db=sqlite3.connect('/tmp/tga2311_test_data/tga_finder.db')
+          fixtures=[
+           ('Helios','Ventilatorbox','SB 125 C',''),
+           ('TROX','Brandschutzklappe','FK2-EU/AT/200x200x500/00/Z00',''),
+           ('TROX','Brandschutzklappe','FK2-EU/AT/400x400x500/00/Z00',''),
+           ('TROX','Brandschutzklappe','FK2-EU',''),
+           ('TROX','Brandschutzklappe','FK2-EU/DE/200x200x500/00/Z00',''),
+           ('ROCKWOOL','Conlit 150 U','150 U',''),
+           ('Geberit','Mapress Therm','Muffe 22 mm','')]
+          db.executemany("INSERT INTO components(project,manufacturer,product,model_type,article_no,confidence,status,docs_searched) VALUES('Testprojekt',?,?,?,?,90,'Prüfen',0)",fixtures)
+          db.commit()
+          at.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not at.exception,at.exception
+          found=db.execute("SELECT manufacturer,model_type,article_no FROM components ORDER BY id").fetchall()
+          assert [x[2] for x in found]==['09562','034002020','034004040','','','',''],found
+          assert len(at.dataframe[0].value)==7
+          print('PASS: real UI resolves TROX full codes, Helios, leaves generic TROX, DE, ROCKWOOL and Geberit untouched',found)
+          at.session_state['doc_overview_selection']={'selection':{'rows':[2]}}
+          at.run()
+          assert not at.exception,at.exception
+          print('PASS: selected product details render')
+          PY
+          (cd /tmp/tga2311 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.11.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.11.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.11.zip
+          git commit -m 'Build v2.3.11 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.11.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.11','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.11.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.11'
+          git pull --rebase origin main
+          git push origin HEAD:main
