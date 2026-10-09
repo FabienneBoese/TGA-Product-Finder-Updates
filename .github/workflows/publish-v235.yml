@@ -67,7 +67,8 @@ jobs:
           test_block=misplaced
           # Only the actual enrichment statements; skip overview rows reassignment.
           test_block=test_block[:test_block.index('  rows=con.execute')]
-          exec(compile(test_block,'<real-enrichment>','exec'),{'con':con,'project':project,'helios_official_article':ns['helios_official_article']})
+          import textwrap
+          exec(compile(textwrap.dedent(test_block),'<real-enrichment>','exec'),{'con':con,'project':project,'helios_official_article':ns['helios_official_article']})
           found=dict(con.execute('SELECT id,article_no FROM components'))
           assert found=={8:'09506',9:'',10:'99999',11:'',12:''},found
           con.close()
