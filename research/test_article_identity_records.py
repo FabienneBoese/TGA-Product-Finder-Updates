@@ -1,5 +1,5 @@
 import unittest
-from research.article_identity_records import codes, extract_html_records, classify, extract_pdf_records, extract_html_links
+from research.article_identity_records import codes, extract_html_records, classify, extract_pdf_records, extract_html_links, unique_single_article, product_scope
 
 class IdentityTests(unittest.TestCase):
     def test_reject_label(self):
@@ -15,6 +15,13 @@ class IdentityTests(unittest.TestCase):
     def test_jsonld(self):
         html = '<script type="application/ld+json">{"@type":"Product","name":"SB 125 A","sku":"09506"}</script>'
         self.assertEqual(extract_html_records(html, model="SB 125 A"), [("09506", "product-jsonld")])
+    def test_single_article_requires_model(self):
+        self.assertIsNone(unique_single_article([("09506","table-row")]))
+        self.assertEqual(unique_single_article([("09506","table-row")],model="SB 125 A"),"09506")
+        self.assertIsNone(unique_single_article([("09506","table-row"),("09507","table-row")],model="SB 125 A"))
+    def test_product_family_deferred(self):
+        self.assertEqual(product_scope("Mapress Therm"),"zurückgestellt – Produktfamilie")
+        self.assertEqual(product_scope("SB 125 A"),"Einzelprodukt – Recherche")
     def test_pdf_line(self):
         pdf=chr(10).join(["SB 125 A","Artikelnummer: 09506","SB 160 A","Artikelnummer: 09507"])
         self.assertEqual(extract_pdf_records(pdf,model="SB 125 A"),[("09506","pdf-line")])
