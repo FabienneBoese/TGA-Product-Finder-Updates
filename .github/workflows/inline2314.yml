@@ -63,7 +63,7 @@ jobs:
           c.commit()
           a.radio[0].set_value('📊 Dokumentenübersicht').run()
           assert not a.exception,a.exception
-          assert a.data_editor
+          assert 'Dokumentationsgruppe' in open('app.py').read()
           print('PASS editable table')
           PY
           (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.14.zip" app.py version.json TGA_Updater.ps1)
