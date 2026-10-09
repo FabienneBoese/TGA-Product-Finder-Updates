@@ -29,7 +29,7 @@ jobs:
           misplaced=s[begin:end]
           assert '_helios_rows=' in misplaced and 'rows=con.execute' in misplaced
           s=s[:begin]+s[end:]
-          anchor=next(line for line in s.splitlines(keepends=True) if "Dokumentenübersicht" in line and "_tga_page" in line)
+          anchor=next(line for line in s.splitlines(keepends=True) if line.strip()=="if _tga_page==\'📊 Dokumentenübersicht\':")
           assert s.count(anchor)==1
           # The overview already has a project-specific connection and current rows.
           s=s.replace(anchor,anchor+chr(10)+misplaced,1)
