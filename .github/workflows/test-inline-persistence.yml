@@ -14,63 +14,45 @@ jobs:
           python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf playwright
           python3 -m playwright install chromium >/dev/null
           cat > /tmp/test_ui.py <<'PY'
-          import os,sqlite3,subprocess,time
+          import os,sqlite3,subprocess,time,urllib.request
           from playwright.sync_api import sync_playwright
-          env=os.environ.copy();env['TGA_DATA_DIR']='/tmp/tga_ui_data'
+          env=os.environ.copy();env['TGA_DATA_DIR']='/tmp/tga_multi_test'
           p=subprocess.Popen(['python3','-m','streamlit','run','/tmp/app/app.py','--server.headless=true','--server.port=8501','--server.address=127.0.0.1'],env=env,stdout=open('/tmp/server.log','w'),stderr=subprocess.STDOUT)
           try:
-           import urllib.request
-           for attempt in range(50):
-            try:
-             urllib.request.urlopen('http://127.0.0.1:8501',timeout=2)
-             break
+           for i in range(50):
+            try:urllib.request.urlopen('http://127.0.0.1:8501',timeout=2);break
             except Exception:time.sleep(1)
-           else:raise RuntimeError(open('/tmp/server.log').read()[-4000:])
            with sync_playwright() as pw:
             browser=pw.chromium.launch(headless=True,args=['--no-sandbox'])
             page=browser.new_page(viewport={'width':1600,'height':1000})
-            page.goto('http://127.0.0.1:8501',wait_until='domcontentloaded',timeout=60000)
-            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
-            page.wait_for_timeout(3000)
-            db=sqlite3.connect('/tmp/tga_ui_data/tga_finder.db')
-            db.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt','TROX','FK2-EU',90,'Prüfen',0)")
-            db.commit()
-            page.reload()
-            page.wait_for_timeout(3000)
-            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
-            page.wait_for_timeout(4000)
-            page.screenshot(path='/tmp/inline-before.png',full_page=True)
-            print('TABLE EDITOR:',page.locator('[data-testid="stDataFrame"]').count(),page.locator('[data-testid="stDataEditor"]').count())
-            print('BODY SNIPPET:',page.locator('body').inner_text()[-2500:])
-            assert page.get_by_text('Dokumentationsgruppe',exact=False).count()>0
-            grid=page.locator('[data-testid="stDataFrame"]').first
-            box=grid.bounding_box()
-            print('GRID BOX:',box)
-            print('GRID HTML:',grid.inner_html()[:2600])
-            grid.click(position={'x':200,'y':58},timeout=8000)
-            page.keyboard.press('Control+End')
-            page.keyboard.press('Enter')
-            page.wait_for_timeout(700)
-            print('EDIT WIDGETS:',page.locator('[role="listbox"]').count(),page.locator('[role="option"]').count(),page.locator('input:visible').count())
-            print('EDITOR TEXT:',page.locator('body').inner_text()[-1600:])
-            print('OPTION NAMES:',page.locator('[role="option"]').all_text_contents())
-            print('LISTBOX:',page.locator('[role="listbox"]').all_text_contents())
-            page.get_by_role('option',name='ATEX-Ausführung').click(timeout=3000)
+            page.goto('http://127.0.0.1:8501')
             page.wait_for_timeout(1800)
-            saved=db.execute("SELECT doc_variant,article_no FROM components WHERE manufacturer='TROX'").fetchone()
-            print('SAVED VARIANT:',saved)
-            assert saved[0]=='ATEX-Ausführung',saved
-            assert not saved[1],saved
-            page.reload()
-            page.wait_for_timeout(2000)
-            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
-            page.wait_for_timeout(2000)
-            saved_again=db.execute("SELECT doc_variant FROM components WHERE manufacturer='TROX'").fetchone()[0]
-            assert saved_again=='ATEX-Ausführung',saved_again
-            print('PASS: browser selected ATEX; SQLite persisted after reload; article unchanged')
-            print('PASS browser renders inline documentation group')
+            db=sqlite3.connect('/tmp/tga_multi_test/tga_finder.db')
+            cases=[('Geberit','Mapress Therm','Systemrohr'),('GROHE','Eurosmart CE','Abweichende Nachweise'),('ROCKWOOL','Conlit 150 U','Allgemeine Unterlagen'),('Helios','SilentBox','Abweichende Nachweise')]
+            for maker,product,variant in cases:
+             db.execute('DELETE FROM components')
+             db.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt',?,?,90,'Prüfen',0)",(maker,product))
+             db.commit()
+             page.reload();page.wait_for_timeout(1600)
+             page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
+             page.wait_for_timeout(1700)
+             assert page.get_by_text('Dokumentationsgruppe',exact=False).count()>0,(maker,'missing editor')
+             grid=page.locator('[data-testid="stDataFrame"]').first
+             grid.click(position={'x':200,'y':58},timeout=10000)
+             page.keyboard.press('Control+End')
+             page.keyboard.press('Enter')
+             page.get_by_role('option',name=variant,exact=True).click(timeout=8000)
+             page.wait_for_timeout(1300)
+             saved=db.execute('SELECT doc_variant,article_no FROM components WHERE manufacturer=?',(maker,)).fetchone()
+             assert saved and saved[0]==variant,(maker,saved)
+             assert not saved[1],(maker,'article changed',saved)
+             page.reload();page.wait_for_timeout(1500)
+             page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
+             page.wait_for_timeout(900)
+             persisted=db.execute('SELECT doc_variant FROM components WHERE manufacturer=?',(maker,)).fetchone()[0]
+             assert persisted==variant,(maker,persisted)
+             print('PASS',maker,product,variant,'saved and retained after reload',flush=True)
             browser.close()
-          finally:
-           p.terminate()
+          finally:p.terminate()
           PY
           python3 /tmp/test_ui.py
