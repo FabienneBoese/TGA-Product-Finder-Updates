@@ -71,3 +71,32 @@ def classify(records):
     if not unique: return "nicht gefunden"
     if len(unique) > 1: return "mehrdeutig"
     return "Kandidat – Herstellerprüfung offen"
+
+def extract_pdf_records(text, model="", dimension="", execution=""):
+    """Extract codes only from the same PDF line or adjacent short record."""
+    lines=[re.sub(r"\\s+", " ", line).strip() for line in str(text or "").splitlines()]
+    result=[]
+    for i,line in enumerate(lines):
+        if not line: continue
+        # Avoid scanning entire catalogue pages; a record is at most two lines.
+        record=" ".join(lines[max(0,i-1):i+2])
+        if not matching_record(record, model, dimension, execution): continue
+        for code in codes(line):
+            pair=(code,"pdf-line")
+            if pair not in result:result.append(pair)
+    return result
+
+def extract_html_links(html, base_url, domain, limit=12):
+    """Follow only same-manufacturer PDF files linked from product pages."""
+    from urllib.parse import urljoin, urlparse
+    soup=BeautifulSoup(html,"html.parser")
+    urls=[]
+    for anchor in soup.select("a[href]"):
+        url=urljoin(base_url,anchor.get("href",""))
+        parsed=urlparse(url)
+        host=(parsed.hostname or "").lower()
+        if parsed.scheme!="https" or not (host==domain or host.endswith("."+domain)):continue
+        if not parsed.path.lower().endswith(".pdf"):continue
+        if url not in urls:urls.append(url)
+        if len(urls)>=limit:break
+    return urls
