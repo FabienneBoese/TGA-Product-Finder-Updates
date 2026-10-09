@@ -18,7 +18,7 @@ jobs:
           import ast,json
           p=Path('/tmp/tga/app.py')
           s=p.read_text().replace('APP_VERSION = "2.3.15"','APP_VERSION = "2.3.16"',1)
-          anchor="   st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')"
+          anchor="  st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')"
           assert s.count(anchor)==1
           addon="""   # GROHE: distinguish verified article references from product-family names.
            # Only explicit product/model identifiers may trigger article recognition.
