@@ -1,0 +1,99 @@
+name: Publish v2.3.7 Overview Crash Fix
+on:
+  push:
+    paths: ['.github/workflows/publish-v237.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga237
+          unzip -q TGA_Product_Finder_Update_v2.3.5.zip -d /tmp/tga237
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga237/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.5"')==1
+          s=s.replace('APP_VERSION = "2.3.5"','APP_VERSION = "2.3.7"',1)
+          # Place the full editor after the actual interactive overview dataframe.
+          lines=s.splitlines(keepends=True)
+          begin=next(i for i,line in enumerate(lines) if "st.markdown('#### Dokumentationsumfang festlegen')" in line)
+          end=next(i for i,line in enumerate(lines[begin:],begin) if line.strip()=="st.divider()" and i>begin)
+          editor=lines[begin:end]
+          assert any('_scope_item=_scope_map[_scope_label]' in line for line in editor)
+          assert any("Dokumentationsumfang speichern" in line for line in editor)
+          del lines[begin:end+1]
+          dfidx=next(i for i,line in enumerate(lines) if "st.dataframe(ovdf," in line)
+          lines[dfidx]=lines[dfidx].replace("st.dataframe(ovdf,","_overview_event=st.dataframe(ovdf,")
+          # The selected row is read from the actual table event, not an earlier widget.
+          for i,line in enumerate(editor):
+           if "st.session_state.get('doc_overview_selection'" in line:
+            editor[i]="     _selected_rows=_overview_event.selection.rows"+chr(10)
+           if "st.markdown('#### Dokumentationsumfang festlegen')" in line:
+            editor[i]="   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')"+chr(10)
+          # Eliminate redundant nested selection assignment and show the active product.
+          editor=[line for line in editor if "_scope_label=_selected_label if _selected_label in _scope_map else _scope_labels[0]" not in line]
+          editor=[line for line in editor if "st.caption('Ausgewählte Tabellenzeile:" not in line]
+          lookup=next(i for i,line in enumerate(editor) if '_scope_item=_scope_map[_scope_label]' in line)
+          editor.insert(lookup,"    st.caption('Ausgewähltes Produkt: '+_scope_label)"+chr(10))
+          lines[dfidx+1:dfidx+1]=[chr(10)]+editor
+          s=''.join(lines)
+          assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")<s.index("st.subheader('📁 Offline-Dokumente dieses Projekts')")
+          assert '_overview_event.selection.rows' in s
+          assert "st.session_state.get('doc_overview_selection'" not in s
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          # Test two distinct selected rows and empty/invalid selection.
+          def selected_id(rows,selected):
+           scope_map={f'{r[1]} | {r[2]} | ID {r[0]}':r for r in rows}
+           idx=selected[0] if selected else None
+           chosen_id=rows[idx][0] if idx is not None and 0<=idx<len(rows) else None
+           label=next((label for label,item in scope_map.items() if item[0]==chosen_id),None)
+           return scope_map[label if label in scope_map else next(iter(scope_map))][0]
+          fixtures=[(8,'Helios','Ventilatorbox'),(9,'TROX','FK2-EU')]
+          assert selected_id(fixtures,[0])==8
+          assert selected_id(fixtures,[1])==9
+          assert selected_id(fixtures,[])==8
+          assert selected_id(fixtures,[999])==8
+          print('PASS: table before editor, event selection, distinct row selection')
+          v=Path('/tmp/tga237/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.7'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga237')
+          at=AppTest.from_file('app.py',default_timeout=40).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga237 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.7.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.7.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.7.zip
+          git commit -m 'Build v2.3.7 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.7.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.7','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.7.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.7'
+          git pull --rebase origin main
+          git push origin HEAD:main
