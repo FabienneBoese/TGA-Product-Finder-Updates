@@ -1,0 +1,111 @@
+name: Publish TGA Product Finder v2.2.9 Generic Recognition Test
+on:
+  push:
+    paths: ['.github/workflows/publish-v229.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga229
+          unzip -q TGA_Product_Finder_Update_v2.2.8.zip -d /tmp/tga229
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,re
+          p=Path('/tmp/tga229/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.2.8"')==1
+          s=s.replace('APP_VERSION = "2.2.8"','APP_VERSION = "2.2.9"',1)
+          import ast,re
+          # Store a documentation scope separately from product identity.
+          anchor=next(line for line in s.splitlines() if "if 'product_family' not in ccols:" in line)
+          indent=anchor[:len(anchor)-len(anchor.lstrip())]
+          addition=(
+           indent+"if 'documentation_scope' not in ccols: c.execute('ALTER TABLE components ADD COLUMN documentation_scope TEXT DEFAULT \"Produktfamilie\"')"
+           +"\\n"+indent+"if 'component_category' not in ccols: c.execute('ALTER TABLE components ADD COLUMN component_category TEXT DEFAULT \"\"')"
+           +"\\n"+indent+"if 'dimensions_grouped' not in ccols: c.execute('ALTER TABLE components ADD COLUMN dimensions_grouped TEXT DEFAULT \"\"')"
+          )
+          s=s.replace(anchor,anchor+"\n"+addition.replace('\\n','\n'),1)
+          # The documentation overview remains the primary workspace. Add an
+          # inline editor directly beneath it, scoped to one component.
+          tree=ast.parse(s)
+          nodes=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='dataframe' and any(isinstance(arg,ast.Name) and arg.id=='ovdf' for arg in n.args)]
+          assert len(nodes)==1
+          node=nodes[0]
+          line_end=s.index('\n',s.index(ast.get_source_segment(s,node)))
+          row=s[s.rfind('\n',0,line_end)+1:line_end]
+          indent=row[:len(row)-len(row.lstrip())]
+          ui="""st.markdown('#### Dokumentationsumfang festlegen')
+          st.caption('Eine Produktfamilie kann gemeinsam dokumentiert werden. Einzelartikel werden nur nach konkreter Herstellerprüfung ausgewählt; hier werden keine Artikelnummern erfunden.')
+          _scope_rows=con.execute('SELECT id,manufacturer,product,product_family,documentation_scope,component_category,dimensions_grouped FROM components WHERE project=? ORDER BY id',(project,)).fetchall()
+          if _scope_rows:
+           _scope_map={f'{r[1]} | {r[2]} | ID {r[0]}':r for r in _scope_rows}
+           _scope_label=st.selectbox('Produkt oder Produktfamilie auswählen',list(_scope_map),key='doc_scope_component')
+           _scope_item=_scope_map[_scope_label]
+           _scope_id=_scope_item[0]
+           _scope_options=['Produktfamilie / gemeinsame Dokumente','Einzelartikel / Variante prüfen']
+           _scope_existing=1 if str(_scope_item[4] or '').startswith('Einzelartikel') else 0
+           _scope_choice=st.radio('Dokumentationsumfang',_scope_options,index=_scope_existing,key=f'doc_scope_mode_{_scope_id}')
+           _scope_category=st.text_input('Bauteilart (z. B. Systemrohr, Muffe)',value=_scope_item[5] or '',key=f'doc_scope_category_{_scope_id}')
+           _scope_dimensions=st.text_input('Zusammengefasste Dimensionen (z. B. 15, 22, 28)',value=_scope_item[6] or '',key=f'doc_scope_dimensions_{_scope_id}')
+           if _scope_choice.startswith('Einzelartikel'):
+            st.info('Die konkrete Artikelnummer wird erst nach Herstellerabgleich bestätigt. Die bestehende Kennung wird nicht automatisch geändert.')
+           if st.button('Dokumentationsumfang speichern',key='doc_scope_save'):
+            con.execute('UPDATE components SET documentation_scope=?,component_category=?,dimensions_grouped=? WHERE id=?',(_scope_choice,_scope_category.strip(),_scope_dimensions.strip(),_scope_id))
+            con.commit()
+            st.success('Dokumentationsumfang gespeichert. Bestehende Dokumente und Artikelnummern bleiben erhalten.')
+          """
+          insert='\n'.join(indent+line if line else '' for line in ui.splitlines())
+          s=s[:line_end+1]+insert+'\n'+s[line_end+1:]
+          ast.parse(s)
+          assert 'Dokumentationsumfang speichern' in s
+          print('PASS: grouped documentation and per-article scope editor added')
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          assert 'documentation_scope' in s and 'dimensions_grouped' in s
+          print('PASS: persisted group scope schema')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/tga229/version.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          d['version']='2.2.9'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q --disable-pip-version-check streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          import os
+          os.chdir('/tmp/tga229')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga229 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.2.9.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.2.9.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.2.9.zip
+          git commit -m 'Build v2.2.9 recognition integrity'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.2.9.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.2.9','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.2.9.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.2.9 manifest'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
