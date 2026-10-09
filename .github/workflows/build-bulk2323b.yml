@@ -1,0 +1,104 @@
+name: Build bulk research 2323
+on:
+  push:
+    paths: ['.github/workflows/build-bulk2323b.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.22.zip -d /tmp/tga
+          cat > /tmp/patch.py <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py');s=p.read_text()
+          s=s.replace('APP_VERSION = "2.3.22"','APP_VERSION = "2.3.23"',1)
+          marker='def _tga_maker_domain(maker):'
+          assert marker in s
+          helper="""def _tga_bulk_candidates(maker, query):
+              import requests
+              import xml.etree.ElementTree as ET
+              import re
+              from urllib.parse import urlparse
+              from bs4 import BeautifulSoup
+              domain=_tga_maker_domain(maker)
+              if not domain:
+                  return [],'Herstellerdomain unbekannt'
+              try:
+                  response=requests.get('https://www.bing.com/search',params={'q':query+' site:'+domain,'format':'rss'},timeout=8,headers={'User-Agent':'Mozilla/5.0'})
+                  response.raise_for_status()
+                  root=ET.fromstring(response.content)
+              except Exception as error:
+                  return [],'Suche fehlgeschlagen: '+type(error).__name__
+              found=[]
+              for item in root.findall('.//item')[:5]:
+                  url=item.findtext('link') or ''
+                  host=(urlparse(url).hostname or '').lower()
+                  if host!=domain and not host.endswith('.'+domain):
+                      continue
+                  try:
+                      page=requests.get(url,timeout=8,headers={'User-Agent':'Mozilla/5.0'})
+                      if page.status_code!=200 or 'html' not in page.headers.get('Content-Type','').lower():
+                          continue
+                      txt=BeautifulSoup(page.text,'html.parser').get_text(' ',strip=True)
+                      pattern=r'(?:Artikelnummer|Art\\.-Nr\\.|Bestellnummer|Order No\\.)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{3,25})'
+                      for match in re.finditer(pattern,txt,re.IGNORECASE):
+                          found.append((match.group(1),url))
+                          if len(found)>=10:break
+                  except requests.RequestException:
+                      continue
+              return found,None
+
+          """
+          s=helper+s
+          needle="st.markdown('**Artikelnummer anhand der Produktdaten recherchieren**')"
+          assert needle in s
+          line=next(x for x in s.splitlines() if needle in x)
+          ind=line[:len(line)-len(line.lstrip())]
+          extra="""if st.button('Artikelnummern aller Komponenten automatisch recherchieren',key='bulk_research'):
+           _bulk=[]
+           _progress=st.progress(0)
+           for _n,_r in enumerate(_ident_rows):
+            _maker=str(_r.get('Hersteller') or '')
+            _q=' '.join(str(_r.get(k) or '') for k in ('Hersteller','Produktfamilie','Typ / Modell','Dimension','Bestandskennung (ungeprüft)'))
+            _hits,_err=_tga_bulk_candidates(_maker,_q)
+            _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})
+            _progress.progress((_n+1)/len(_ident_rows))
+           st.session_state['bulk_article_results']=_bulk
+          if st.session_state.get('bulk_article_results'):
+           st.dataframe(st.session_state['bulk_article_results'],hide_index=True,width='stretch',height=max(250,38*(len(st.session_state['bulk_article_results'])+1)))
+           st.download_button('Artikelrecherche als CSV exportieren',data=_ident_csv(st.session_state['bulk_article_results']),file_name='TGA_Artikelrecherche.csv',mime='text/csv')
+"""
+          s=s.replace(line,line+'\n'+'\n'.join(ind+x for x in extra.splitlines()),1)
+          ast.parse(s);p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.23';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 /tmp/patch.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          c.execute("INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched) VALUES('Testprojekt','Helios','Ventilatorbox','09506','SB 125 A',90,'Prüfen',0)")
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Artikelnummern aller Komponenten automatisch recherchieren' in x.label for x in a.button)
+          print('PASS Streamlit bulk UI')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.23.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.23.zip
+          git commit -m 'Release bulk article search 2.3.23'
+          git pull --rebase origin main
+          git push origin HEAD:main
