@@ -1,0 +1,126 @@
+name: Publish v2.3.10 Verified Helios Catalogue
+on:
+  push:
+    paths: ['.github/workflows/publish-v2310.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, regression test, publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga2310
+          unzip -q TGA_Product_Finder_Update_v2.3.8.zip -d /tmp/tga2310
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,json,re
+          p=Path('/tmp/tga2310/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.3.8"')==1
+          s=s.replace('APP_VERSION = "2.3.8"','APP_VERSION = "2.3.10"',1)
+          # Manufacturer-confirmed Helios SilentBox catalogue, exact variant only.
+          a=s.index('def helios_official_article(')
+          b=s.index('def classify_component_identifier(',a)
+          assert a>=0 and b>a
+          catalogue={
+           'SB125A':'09506','SB125C':'09562','SB160B':'09508','SB160D':'09563',
+           'SB200C':'09510','SB200D':'09564','SB250C':'09512','SB250E':'09565',
+           'SBEC125A':'06132','SBEC125B':'09624','SBEC160A':'06136',
+           'SBEC160B':'09625','SBEC200A':'06138','SBEC200B':'09626',
+           'SBEC250':'09627','SBEC315A':'06157','SBEC315B':'09628',
+           'SBEC355':'06139','SBEC400A':'06140','SBEC400B':'09629',
+           'SBD315A':'09718'
+          }
+          import pprint
+          replacement=chr(10).join([
+           'HELIOS_SILENTBOX_ARTICLES='+pprint.pformat(catalogue,sort_dicts=True),
+           'HELIOS_SILENTBOX_SOURCE="https://www.heliosventilatoren.de/de/produkte/rohrventilatoren/silentbox"',
+           '',
+           'def helios_official_article(manufacturer, product, model_type="", article_no=""):',
+           ' import re',
+           ' if "helios" not in str(manufacturer or "").casefold(): return None',
+           ' text=" ".join(str(v or "") for v in (product,model_type)).upper()',
+           ' variants={re.sub(r"[^A-Z0-9]","",v) for v in re.findall(r"(?<![A-Z0-9])(?:SB\\s*EC|SBD|SB)\\s*[-/]?\\s*\\d{2,3}\\s*[A-Z]?(?![A-Z0-9])",text)}',
+           ' if len(variants)!=1:return None',
+           ' key=next(iter(variants))',
+           ' article=HELIOS_SILENTBOX_ARTICLES.get(key)',
+           ' if not article:return None',
+           ' existing=str(article_no or "").strip()',
+           ' return {"article":article,"conflict":bool(existing and existing.lstrip("0")!=article.lstrip("0")),"source":HELIOS_SILENTBOX_SOURCE}',
+           '',
+           ''
+          ])
+          s=s[:a]+replacement+s[b:]
+          # Existing overview already enriches through helios_official_article.
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          ns={}
+          tree=ast.parse(s)
+          selected=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.Assign)) and (isinstance(n,ast.FunctionDef) and n.name=='helios_official_article' or isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id.startswith('HELIOS_SILENTBOX_') for t in n.targets))]
+          exec(compile(ast.Module(body=selected,type_ignores=[]),'<catalogue>','exec'),ns)
+          f=ns['helios_official_article']
+          for model,article in [('SB 125 A','09506'),('SB 125 C','09562'),('SB 160 B','09508'),('SB EC 125 A','06132'),('SB EC 315 B','09628'),('SBD 315 A','09718')]:
+           assert f('Helios','Ventilatorbox',model)['article']==article,model
+          assert f('Helios','Ventilatorbox','SB 125') is None
+          assert f('Helios','Ventilatorbox','SB 125 A / SB 125 C') is None
+          assert f('TROX','Ventilatorbox','SB 125 C') is None
+          assert f('Helios','Ventilatorbox','SB 125 C','99999')['conflict']
+          print('PASS: 21 Helios manufacturer variants, no guessing or overwriting conflicts')
+          v=Path('/tmp/tga2310/version.json')
+          data=json.loads(v.read_text(encoding='utf-8'));data['version']='2.3.10'
+          v.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga2310_test_data python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2310')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          db=sqlite3.connect('/tmp/tga2310_test_data/tga_finder.db')
+          fixtures=[
+           ('Helios','Ventilatorbox','SB 125 A',''),
+           ('Helios','Ventilatorbox','SB 125 C',''),
+           ('Helios','Ventilatorbox','SB EC 315 B',''),
+           ('Helios','Ventilatorbox','SB 125',''),
+           ('Helios','Ventilatorbox','SB 160 B','99999'),
+           ('TROX','Brandschutzklappe','FK2-EU','')]
+          db.executemany("INSERT INTO components(project,manufacturer,product,model_type,article_no,confidence,status,docs_searched) VALUES('Testprojekt',?,?,?,?,90,'Prüfen',0)",fixtures)
+          db.commit()
+          at.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not at.exception,at.exception
+          found=db.execute("SELECT model_type,article_no FROM components ORDER BY id").fetchall()
+          assert [x[1] for x in found]==['09506','09562','09628','','99999',''],found
+          assert len(at.dataframe[0].value)==6
+          print('PASS: populated app writes three manufacturer verified articles into the integrated table, preserves ambiguous and existing values',found)
+          at.session_state['doc_overview_selection']={'selection':{'rows':[1]}}
+          at.run()
+          assert not at.exception,at.exception
+          assert any('Helios' in c.value and 'Ausgewähltes Produkt:' in c.value for c in at.caption)
+          print('PASS: selecting Helios SB 125 C details without UI exception')
+          PY
+          (cd /tmp/tga2310 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.10.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.3.10.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.10.zip
+          git commit -m 'Build v2.3.10 overview crash fix'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.3.10.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.3.10','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.3.10.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.3.10'
+          git pull --rebase origin main
+          git push origin HEAD:main
