@@ -1,0 +1,3 @@
+# Artikelrecherche v2 – Teststand
+
+Ein isolierter Prototyp für strukturierte Produktdaten wurde lokal mit acht Unit-Tests geprüft. Er ist **nicht** in die Streamlit-App integriert und stellt **keine veröffentlichte Version** dar. Die bestehende v2.3.26 bleibt unverändert. Kritische Erkenntnis: Eine Artikelnummer aus dem Fließtext einer Katalogseite darf nicht einem beliebigen Modell derselben Seite zugeordnet werden; nur lokal begrenzte Produktdatensätze bzw. explizite strukturierte Product-Daten sind verwertbar. Weitere Arbeiten: sichere Quellensuche, PDF-Tabellen, Integration, Live-Audit der 59 Datensätze.
