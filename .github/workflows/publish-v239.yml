@@ -59,6 +59,11 @@ jobs:
           indentation=needle[:len(needle)-len(needle.lstrip())]
           enrichment=''.join(indentation+line.lstrip()+chr(10) if line.startswith('  _article_rows=') or line.startswith('  for _aid,') or line.startswith('  con.commit()') else indentation+' '+line.lstrip()+chr(10) if line.startswith('   _recovered=') or line.startswith('   if _recovered:') else indentation+'  '+line.lstrip()+chr(10) for line in enrichment.splitlines() if line.strip())
           s=s.replace(needle,enrichment+needle,1)
+          ls=s.splitlines(keepends=True)
+          idx=next(i for i,l in enumerate(ls) if '_scope_item=_scope_map[_scope_label]' in l)
+          ind=ls[idx][:len(ls[idx])-len(ls[idx].lstrip())]
+          ls.insert(idx,ind+'_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))'+chr(10))
+          s=''.join(ls)
           ast.parse(s)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
