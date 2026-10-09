@@ -49,6 +49,9 @@ jobs:
           """
           # Remove existing selectbox key to permit selection changes on rerun.
           replacement=replacement.replace(",key='doc_scope_component')",")")
+          import textwrap
+          _prefix=s[s.rfind('\n',0,s.index(old))+1:s.index(old)]
+          replacement=textwrap.dedent(replacement).rstrip('\n').replace('\n','\n'+_prefix)
           s=s.replace(old,replacement,1)
           # Suggest category and dimensions from the designation, without auto-saving
           # or changing existing user-entered values.
