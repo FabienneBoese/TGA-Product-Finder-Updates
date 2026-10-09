@@ -82,7 +82,7 @@ jobs:
           s=s[:start]+s[end:]
           position=s.index(next(line for line in s.splitlines(keepends=True) if 'overview=[]' in line))
           s=s[:position]+section+s[position:]
-          assert s.index("Dokumentationsumfang festlegen")<s.index("   overview=[]")
+          assert s.index("Dokumentationsumfang festlegen")<s.index("overview=[]")
           ast.parse(s);p.write_text(s,encoding='utf-8');py_compile.compile(str(p),doraise=True)
           tree=ast.parse(s)
           fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='helios_official_article')
