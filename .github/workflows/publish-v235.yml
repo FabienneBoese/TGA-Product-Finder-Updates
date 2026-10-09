@@ -44,6 +44,7 @@ jobs:
           assert s.index('_helios_rows=')>s.index(anchor)
           assert 'st.selectbox(\'Produkt oder Produktfamilie auswählen\'' not in s
           assert 'doc_overview_selection' in s
+          print('OVERVIEW_PATCH_CONTEXT',repr(s.splitlines()[1688:1701]),repr(s.splitlines()[1870:1905]))
           ast.parse(s)
           p.write_text(s,encoding='utf-8')
           py_compile.compile(str(p),doraise=True)
