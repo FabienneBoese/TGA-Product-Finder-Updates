@@ -43,6 +43,7 @@ jobs:
           editor=[line for line in editor if "st.caption('Ausgewählte Tabellenzeile:" not in line]
           lookup=next(i for i,line in enumerate(editor) if '_scope_item=_scope_map[_scope_label]' in line)
           editor.insert(lookup,"    st.caption('Ausgewähltes Produkt: '+_scope_label)"+chr(10))
+          editor=[' '+line if line.strip() else line for line in editor]
           lines[dfidx+1:dfidx+1]=[chr(10)]+editor
           s=''.join(lines)
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")<s.index("st.subheader('📁 Offline-Dokumente dieses Projekts')")
