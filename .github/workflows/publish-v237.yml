@@ -35,7 +35,7 @@ jobs:
           # The selected row is read from the actual table event, not an earlier widget.
           for i,line in enumerate(editor):
            if "st.session_state.get('doc_overview_selection'" in line:
-            editor[i]="     _selected_rows=_overview_event.selection.rows"+chr(10)
+            editor[i]=line[:len(line)-len(line.lstrip())]+"_selected_rows=_overview_event.selection.rows"+chr(10)
            if "st.markdown('#### Dokumentationsumfang festlegen')" in line:
             editor[i]="   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')"+chr(10)
           # Eliminate redundant nested selection assignment and show the active product.
@@ -43,7 +43,6 @@ jobs:
           editor=[line for line in editor if "st.caption('Ausgewählte Tabellenzeile:" not in line]
           lookup=next(i for i,line in enumerate(editor) if '_scope_item=_scope_map[_scope_label]' in line)
           editor.insert(lookup,"    st.caption('Ausgewähltes Produkt: '+_scope_label)"+chr(10))
-          editor=[' '+line if line.strip() else line for line in editor]
           lines[dfidx+1:dfidx+1]=[chr(10)]+editor
           s=''.join(lines)
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")<s.index("st.subheader('📁 Offline-Dokumente dieses Projekts')")
