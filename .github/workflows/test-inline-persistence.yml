@@ -1,0 +1,42 @@
+name: Test inline editor persistence
+on:
+  push:
+    paths: ['.github/workflows/test-inline-persistence.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/app
+          unzip -q TGA_Product_Finder_Update_v2.3.14.zip -d /tmp/app
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf playwright
+          python3 -m playwright install --with-deps chromium >/dev/null
+          cat > /tmp/test_ui.py <<'PY'
+          import os,sqlite3,subprocess,time
+          from playwright.sync_api import sync_playwright
+          env=os.environ.copy();env['TGA_DATA_DIR']='/tmp/tga_ui_data'
+          p=subprocess.Popen(['python3','-m','streamlit','run','/tmp/app/app.py','--server.headless=true','--server.port=8501','--server.address=127.0.0.1'],env=env,stdout=open('/tmp/server.log','w'),stderr=subprocess.STDOUT)
+          try:
+           with sync_playwright() as pw:
+            browser=pw.chromium.launch(headless=True,args=['--no-sandbox'])
+            page=browser.new_page(viewport={'width':1600,'height':1000})
+            page.goto('http://127.0.0.1:8501',wait_until='domcontentloaded',timeout=60000)
+            page.get_by_text('Dokumentenübersicht',exact=False).first.click(timeout=30000)
+            page.wait_for_timeout(3000)
+            db=sqlite3.connect('/tmp/tga_ui_data/tga_finder.db')
+            db.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt','TROX','FK2-EU',90,'Prüfen',0)")
+            db.commit()
+            page.reload()
+            page.wait_for_timeout(4000)
+            page.screenshot(path='/tmp/inline-before.png',full_page=True)
+            print('TABLE EDITOR:',page.locator('[data-testid="stDataFrame"]').count(),page.locator('[data-testid="stDataEditor"]').count())
+            print('BODY SNIPPET:',page.locator('body').inner_text()[-1800:])
+            assert page.get_by_text('Dokumentationsgruppe',exact=False).count()>0
+            print('PASS browser renders inline documentation group')
+            browser.close()
+          finally:
+           p.terminate()
+          PY
+          python3 /tmp/test_ui.py
