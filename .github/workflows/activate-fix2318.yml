@@ -1,0 +1,28 @@
+name: Activate module fix 2318
+on:
+  push:
+    paths: ['.github/workflows/activate-fix2318.yml']
+permissions:
+  contents: write
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.18.zip')
+          d={'version':'2.3.18','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/REPLACE_COMMIT/TGA_Product_Finder_Update_v2.3.18.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+          Path('update_manifest.json').write_text(json.dumps(d,indent=2))
+          PY
+          COMMIT=$(git log -1 --format=%H -- TGA_Product_Finder_Update_v2.3.18.zip)
+          sed -i "s/REPLACE_COMMIT/$COMMIT/" update_manifest.json
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Activate module fix 2.3.18'
+          git pull --rebase origin main
+          git push origin HEAD:main
