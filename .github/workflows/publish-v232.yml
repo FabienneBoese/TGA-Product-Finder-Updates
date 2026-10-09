@@ -37,14 +37,14 @@ jobs:
           anchor_overview=" if _tga_page=='📊 Dokumentenübersicht':"
           assert s.count(anchor_overview)==1
           enrich=""" # Exact Helios match only; existing article numbers are protected.
- _helios_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no FROM components WHERE project=?",(project,)).fetchall()
- for _hid,_hm,_hp,_ht,_ha in _helios_rows:
-  _candidate=helios_official_article(_hm,_hp,_ht,_ha)
-  if _candidate and not _candidate['conflict'] and not str(_ha or '').strip():
-   con.execute("UPDATE components SET article_no=? WHERE id=? AND (article_no IS NULL OR TRIM(article_no)='')",(_candidate['article'],_hid))
- con.commit()
- rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()
-"""
+           _helios_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no FROM components WHERE project=?",(project,)).fetchall()
+           for _hid,_hm,_hp,_ht,_ha in _helios_rows:
+            _candidate=helios_official_article(_hm,_hp,_ht,_ha)
+            if _candidate and not _candidate['conflict'] and not str(_ha or '').strip():
+             con.execute("UPDATE components SET article_no=? WHERE id=? AND (article_no IS NULL OR TRIM(article_no)='')",(_candidate['article'],_hid))
+           con.commit()
+           rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()
+          """
           s=s.replace(anchor_overview,enrich+anchor_overview,1)
           assert s.count("'Artikelnummer':oa or '—'")==1
           s=s.replace("'Artikelnummer':oa or '—'","'Artikelnummer':oa or '—','Herstellerquelle':helios_official_article(om,op,'',oa)['source'] if helios_official_article(om,op,'',oa) else '—'",1)
