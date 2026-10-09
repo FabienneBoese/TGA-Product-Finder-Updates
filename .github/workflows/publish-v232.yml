@@ -34,8 +34,8 @@ jobs:
 
           """
           s=s.replace(anchor,helper+anchor,1)
-          anchor_overview=" if _tga_page=='📊 Dokumentenübersicht':"
-          assert anchor_overview in s, "overview anchor missing"
+          anchor_overview=next((line for line in s.splitlines() if "if _tga_page==" in line and "Dokumentenübersicht" in line),None)
+          assert anchor_overview, "overview anchor missing"
           enrich=""" # Exact Helios match only; existing article numbers are protected.
            _helios_rows=con.execute("SELECT id,manufacturer,product,model_type,article_no FROM components WHERE project=?",(project,)).fetchall()
            for _hid,_hm,_hp,_ht,_ha in _helios_rows:
