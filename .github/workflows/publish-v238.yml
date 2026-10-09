@@ -31,6 +31,14 @@ jobs:
           lines[caption]=indent+lines[caption].lstrip()
           lines.insert(caption,indent+"_scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))"+chr(10))
           s=''.join(lines)
+          # Deduplicate identical model editor accidentally inserted twice in legacy app.
+          duplicate="   _current_model=con.execute('SELECT model_type FROM components WHERE id=?',(cid,)).fetchone()[0] or ''"
+          pos=[i for i,line in enumerate(s.splitlines(keepends=True)) if line.rstrip()==duplicate]
+          assert len(pos)==2,pos
+          ls=s.splitlines(keepends=True)
+          assert ls[pos[0]:pos[0]+5]==ls[pos[1]:pos[1]+5]
+          del ls[pos[1]:pos[1]+5]
+          s=''.join(ls)
           assert s.index("st.dataframe(ovdf,")<s.index("Produktdetails zur ausgewählten Tabellenzeile")
           print('DUPLICATE_KEYS',[(i+1,line) for i,line in enumerate(s.splitlines()) if 'model_type_{cid}' in line or 'model_type_' in line and 'key=' in line],flush=True)
           print('AROUND_DETAIL',repr(s.splitlines()[1960:2005]),flush=True)
