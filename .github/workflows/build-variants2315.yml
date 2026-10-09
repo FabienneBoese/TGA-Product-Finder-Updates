@@ -53,7 +53,7 @@ jobs:
               con.commit()
               st.success('Dokumentationsgruppe gespeichert: '+_maker+' '+_prod)
            _overview_event=None"""
-          s=s[:start]+'\n'.join(line[1:] if line.startswith(' ') else line for line in ui.splitlines())+s[end:]
+          s=s[:start]+'\n'.join((line[1:] if i==0 else ' '+line) for i,line in enumerate(ui.splitlines()))+s[end:]
           print('NEAR EDITOR:',[(i+1,repr(l)) for i,l in enumerate(s.splitlines()) if 2025<=i+1<=2038])
           ast.parse(s)
           p.write_text(s)
