@@ -40,7 +40,7 @@ jobs:
            ''
           ])
           s=s.replace(marker,helper+marker,1)
-          anchor="  if 'documentation_scope' not in ccols:"
+          anchor=next(line for line in s.splitlines() if 'documentation_scope' in line and 'ccols' in line)
           assert s.count(anchor)==1
           s=s.replace(anchor,"  if 'product_identity' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_identity TEXT DEFAULT \"\"')"+chr(10)+anchor,1)
           anchor='  rows=con.execute("SELECT id,manufacturer,product,article_no,confidence,status,docs_searched FROM components WHERE project=? ORDER BY id",(project,)).fetchall()'
