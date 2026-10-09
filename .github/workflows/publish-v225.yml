@@ -26,7 +26,7 @@ jobs:
           assert s.count(anchor)==1
           s=s.replace(anchor,anchor+"\n  if 'identifier_source' not in ccols: c.execute('ALTER TABLE components ADD COLUMN identifier_source TEXT DEFAULT \"\"')\n  if 'product_family' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_family TEXT DEFAULT \"\"')",1)
           # Before any automatic migration, save original value. Do not discard families.
-          anchor="  for _cid,_maker,_product,_article,_model in c.execute('SELECT id,manufacturer,product,article_no,model_type FROM components').fetchall():"
+          anchor=next(line for line in s.splitlines() if 'for _cid,_maker,_product,_article,_model in c.execute(' in line)
           assert s.count(anchor)==1
           s=s.replace(anchor,anchor+"\n   if str(_article or '').strip():\n    c.execute('UPDATE components SET identifier_source=? WHERE id=? AND COALESCE(identifier_source,\'\')=\'\'',(_article,_cid))",1)
           old="if _kind=='family' and str(_article or '').strip():\n   c.execute('UPDATE components SET article_no=? WHERE id=?',('',_cid))"
