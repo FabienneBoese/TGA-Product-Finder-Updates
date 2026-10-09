@@ -1,0 +1,66 @@
+name: Build GROHE article detection 2316
+on:
+  push:
+    paths: ['.github/workflows/build-grohe2316.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.15.zip -d /tmp/tga
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text().replace('APP_VERSION = "2.3.15"','APP_VERSION = "2.3.16"',1)
+          anchor="   st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')"
+          assert s.count(anchor)==1
+          addon="""   # GROHE: distinguish verified article references from product-family names.
+           # Only explicit product/model identifiers may trigger article recognition.
+           import re as _grohe_re
+           _grohe_verified={'36332000':('Eurosmart CE','https://www.grohe.de/de_de/eurosmart-ce-infrarot-elektronik-waschtisch-wandarmatur-mit-mischeinrichtung-und-thermostat-36332000.html')}
+           for _gid,_maker,_product,_article,_model in con.execute('SELECT id,manufacturer,product,article_no,model_type FROM components WHERE project=?',(project,)).fetchall():
+            if 'grohe' not in str(_maker).lower() or _article:
+             continue
+            _tokens=set(_grohe_re.findall(r'(?<![A-Za-z0-9])[0-9A-Z]{8}(?![A-Za-z0-9])',str(_product or '')+' '+str(_model or '')))
+            _matches=[_t for _t in _tokens if _t in _grohe_verified and 'eurosmart' in str(_product).lower()]
+            if len(_matches)==1:
+             _code=_matches[0]
+             con.execute('UPDATE components SET article_no=?,identifier_source=? WHERE id=?',(_code,'GROHE Herstellerproduktseite – explizite Nummer',_gid))
+             con.commit()
+           """
+          s=s.replace(anchor,'\n'.join(line[1:] for line in addon.splitlines())+'\n'+anchor,1)
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.16';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          for product,model in [('Eurosmart CE','36332000'),('Eurosmart CE',''),('Eurosmart CE','FK2-EU'),('Eurosmart CE','36332001')]:
+           c.execute("INSERT INTO components(project,manufacturer,product,model_type,confidence,status,docs_searched) VALUES('Testprojekt','GROHE',?,?,90,'Prüfen',0)",(product,model))
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          vals=c.execute("SELECT article_no FROM components WHERE manufacturer='GROHE' ORDER BY id").fetchall()
+          assert vals==[('36332000',),(None,),(None,),(None,)],vals
+          print('PASS GROHE verified article recognition; family and unknown models preserved')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.16.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.16.zip
+          git commit -m 'Release verified GROHE article detection 2.3.16'
+          git pull --rebase origin main
+          git push origin HEAD:main
