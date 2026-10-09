@@ -1,4 +1,4 @@
-name: Build product-specific variants 2315
+name: Build product-specific variants 2315 verified
 on:
   push:
     paths: ['.github/workflows/build-variants2315.yml']
