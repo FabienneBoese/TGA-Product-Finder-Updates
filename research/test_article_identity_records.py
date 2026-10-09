@@ -16,7 +16,7 @@ class IdentityTests(unittest.TestCase):
         html = '<script type="application/ld+json">{"@type":"Product","name":"SB 125 A","sku":"09506"}</script>'
         self.assertEqual(extract_html_records(html, model="SB 125 A"), [("09506", "product-jsonld")])
     def test_pdf_line(self):
-        pdf="SB 125 A\\nArtikelnummer: 09506\\nSB 160 A\\nArtikelnummer: 09507"
+        pdf=chr(10).join(["SB 125 A","Artikelnummer: 09506","SB 160 A","Artikelnummer: 09507"])
         self.assertEqual(extract_pdf_records(pdf,model="SB 125 A"),[("09506","pdf-line")])
     def test_official_pdf_links(self):
         html='<a href="/data/sb125.pdf">PDF</a><a href="https://evil.example/a.pdf">bad</a>'
