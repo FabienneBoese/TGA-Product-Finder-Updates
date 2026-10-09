@@ -1,0 +1,73 @@
+"""Conservative article identity extraction from local product records.
+
+Never treat a number on a multi-product catalog page as proof of a particular variant.
+"""
+import json
+import re
+from bs4 import BeautifulSoup
+
+CODE_RE = re.compile(r"(?:Artikel(?:nummer|[- ]?Nr\.)|Art\.-?Nr\.?|Bestell(?:nummer|[- ]?Nr\.)|Order\s*(?:No\.?|Number)|Product\s*(?:Code|No\.?))\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{3,29})", re.I)
+BAD = {"einbaudatum", "datenblatt", "montage", "download", "artikelnummer", "bestellnummer"}
+def norm(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+def codes(text):
+    found = []
+    for match in CODE_RE.finditer(str(text or "")):
+        code = match.group(1).strip(".,;:")
+        if (any(ch.isdigit() for ch in code) and code.casefold() not in BAD
+            and not re.fullmatch(r"(?:19|20)\d\d", code)
+            and not re.fullmatch(r"\d{1,2}[./-]\d{1,2}[./-](?:19|20)?\d{2}", code)
+            and code not in found):
+            found.append(code)
+    return found
+
+def matching_record(text, model="", dimension="", execution=""):
+    compact = norm(text)
+    return all(norm(v) in compact for v in (model, dimension, execution) if norm(v))
+
+def extract_html_records(html, model="", dimension="", execution=""):
+    """Return (code, evidence) only when the number belongs to a bounded record.
+
+    HTML tables are evaluated row by row, structured Product JSON-LD object by
+    object. A page-wide model mention is intentionally insufficient.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    out = []
+    def add(code, evidence):
+        if code and (code, evidence) not in out:
+            out.append((code, evidence))
+    for row in soup.select("tr"):
+        text = row.get_text(" ", strip=True)
+        if matching_record(text, model, dimension, execution):
+            for code in codes(text):
+                add(code, "table-row")
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            payload = json.loads(script.string or script.get_text())
+        except (ValueError, TypeError):
+            continue
+        def walk(node):
+            if isinstance(node, list):
+                for child in node: walk(child)
+            elif isinstance(node, dict):
+                kinds = node.get("@type", [])
+                kinds = [kinds] if isinstance(kinds, str) else kinds
+                if "Product" in kinds:
+                    fields = " ".join(str(node.get(k, "")) for k in ("name", "model", "description", "size", "color"))
+                    if matching_record(fields, model, dimension, execution):
+                        for key in ("sku", "mpn"):
+                            val = str(node.get(key, "")).strip()
+                            if val and any(c.isdigit() for c in val):
+                                add(val, "product-jsonld")
+                for child in node.values():
+                    if isinstance(child, (list, dict)): walk(child)
+        walk(payload)
+    return out
+
+def classify(records):
+    """Multiple distinct codes are ambiguous, never automatically confirmed."""
+    unique = sorted({code for code, _ in records})
+    if not unique: return "nicht gefunden"
+    if len(unique) > 1: return "mehrdeutig"
+    return "Kandidat – Herstellerprüfung offen"
