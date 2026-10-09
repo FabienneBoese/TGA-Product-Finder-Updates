@@ -1,0 +1,28 @@
+name: Validate bounded article identity integration
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-article-identity.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python -m pip install -q beautifulsoup4 streamlit pandas openpyxl requests pypdf
+          python -m unittest discover -s research -p 'test_article_identity_records.py' -v
+          mkdir -p /tmp/tga-validation
+          unzip -q TGA_Product_Finder_Update_v2.3.26.zip -d /tmp/tga-validation
+          python -m py_compile /tmp/tga-validation/app.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          source=Path('/tmp/tga-validation/app.py').read_text()
+          tree=ast.parse(source)
+          names={n.name for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))}
+          assert '_tga_bulk_candidates' in names
+          print('App compile and existing bulk search hook: PASS')
+          PY
