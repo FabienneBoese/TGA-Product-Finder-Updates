@@ -41,6 +41,7 @@ jobs:
              grid.click(position={'x':200,'y':58},timeout=10000)
              page.keyboard.press('Control+End')
              page.keyboard.press('Enter')
+             print('OPTIONS',maker,page.locator('[role="option"]').all_text_contents(),flush=True)
              page.get_by_role('option',name=variant,exact=True).click(timeout=8000)
              page.wait_for_timeout(1300)
              saved=db.execute('SELECT doc_variant,article_no FROM components WHERE manufacturer=?',(maker,)).fetchone()
