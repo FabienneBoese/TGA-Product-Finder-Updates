@@ -37,7 +37,7 @@ jobs:
           old=next(line for line in s.splitlines(keepends=True) if '_scope_label=st.selectbox(' in line)
           assert s.count(old)==1
           new="    _scope_label=_selected_label if _selected_label in _scope_map else _scope_labels[0]\n    st.caption('Ausgewählte Tabellenzeile: '+_scope_label+' · Zum Wechseln eine andere Tabellenzeile anklicken.')"
-          s=s.replace(old,new,1)
+          s=s.replace(old,new+chr(10),1)
           s=s.replace("   st.markdown('#### Dokumentationsumfang festlegen')","   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')",1)
           # Existing values and unrelated manufacturers remain untouched.
           assert 'helios_official_article(_hm,_hp,_ht,_ha)' in s
