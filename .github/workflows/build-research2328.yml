@@ -12,7 +12,7 @@ jobs:
       - run: |
           set -e
           python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
-          # Run regression suite before release
+          # Run updated regression suite before release
           python3 -m unittest discover -s research -p 'test_article_identity_records.py' -v
           mkdir -p /tmp/tga2328
           unzip -q TGA_Product_Finder_Update_v2.3.27.zip -d /tmp/tga2328
