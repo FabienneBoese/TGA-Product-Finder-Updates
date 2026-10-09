@@ -1,0 +1,89 @@
+name: Publish TGA Product Finder v2.2.7 Generic Recognition Test
+on:
+  push:
+    paths: ['.github/workflows/publish-v227.yml']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tga227
+          unzip -q TGA_Product_Finder_Update_v2.2.6.zip -d /tmp/tga227
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,py_compile,re
+          p=Path('/tmp/tga227/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert s.count('APP_VERSION = "2.2.6"')==1
+          s=s.replace('APP_VERSION = "2.2.6"','APP_VERSION = "2.2.7"',1)
+          # Render the entire document overview without an inner vertical scroll area.
+          import re
+          # Target only the documentation overview table; preserve all other tables.
+          anchor="ovdf=pd.DataFrame(overview)"
+          assert s.count(anchor)==1
+          start=s.index(anchor)
+          end=s.index("\n",start)
+          # Streamlit dataframe height is explicit so every product row is visible.
+          import ast
+          tree=ast.parse(s)
+          candidates=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='dataframe' and any(isinstance(arg,ast.Name) and arg.id=='ovdf' for arg in n.args)]
+          assert len(candidates)==1, 'Dokumentationsübersicht dataframe eindeutig finden'
+          node=candidates[0]
+          old=ast.get_source_segment(s,node)
+          assert old and 'ovdf' in old
+          # 35 px per row + header; the browser page scrolls, not the table.
+          new="st.dataframe(ovdf, height=max(420, 38 * (len(ovdf) + 1)), use_container_width=True, hide_index=True)"
+          s=s.replace(old,new,1)
+          assert s.count(new)==1
+          ast.parse(s)
+          print('PASS: overview dataframe dynamically sized to all rows')
+          p.write_text(s,encoding='utf-8')
+          py_compile.compile(str(p),doraise=True)
+          assert 'height=max(420, 38 * (len(ovdf) + 1))' in s
+          assert 'ovdf=pd.DataFrame(overview)' in s
+          print('PASS: document overview expands to full height')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/tga227/version.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          d['version']='2.2.7'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python3 -m pip install -q --disable-pip-version-check streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          import os
+          os.chdir('/tmp/tga227')
+          at=AppTest.from_file('app.py',default_timeout=35).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit AppTest')
+          PY
+          (cd /tmp/tga227 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.2.7.zip" app.py version.json TGA_Updater.ps1)
+          unzip -t TGA_Product_Finder_Update_v2.2.7.zip
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.2.7.zip
+          git commit -m 'Build v2.2.7 recognition integrity'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          PACKAGE_COMMIT=$(git rev-parse HEAD)
+          SHA=$(sha256sum TGA_Product_Finder_Update_v2.2.7.zip | awk '{print $1}')
+          python3 - "$SHA" "$PACKAGE_COMMIT" <<'PY'
+          import json,sys
+          sha,commit=sys.argv[1:]
+          data={'version':'2.2.7','download_url':f'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/{commit}/TGA_Product_Finder_Update_v2.2.7.zip','sha256':sha}
+          open('update_manifest.json','w').write(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Publish v2.2.7 manifest'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
