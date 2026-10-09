@@ -1,4 +1,4 @@
-name: Publish v2.3.2 Helios
+name: Publish v2.3.2 Helios Auto Identification
 on:
   push:
     paths: ['.github/workflows/publish-v232.yml']
