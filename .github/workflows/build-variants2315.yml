@@ -19,8 +19,8 @@ jobs:
           p=Path('/tmp/tga/app.py')
           s=p.read_text()
           s=s.replace('APP_VERSION = "2.3.14"','APP_VERSION = "2.3.15"',1)
-          start=s.index("   _options=['','Standardausführung'")
-          end=s.index("   _overview_event=None",start)+len("   _overview_event=None")
+          start=s.rfind('\n',0,s.index("_options=['','Standardausführung'"))+1
+          end=s.index("_overview_event=None",start)+len("_overview_event=None")
           ui="""   st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')
            _hdr=st.columns([2,3,3])
            _hdr[0].markdown('**Hersteller**')
