@@ -74,7 +74,7 @@ jobs:
           if start<0:
            import re
            match=next((line for line in s.splitlines(keepends=True) if "st.subheader(" in line and "Dokumentationsumfang festlegen" in line),None)
-           assert match, "scope editor heading missing"
+           assert match, "scope editor heading missing; nearby: "+repr([line for line in s.splitlines() if "scope" in line.lower() or "Dokumentationsumfang" in line][:35])
            start=s.index(match)
           end=s.index("  st.subheader('📁 Offline-Dokumente dieses Projekts')",start)
           section=s[start:end]
