@@ -1,0 +1,86 @@
+name: Build article audit 2321
+on:
+  push:
+    paths: ['.github/workflows/build-article-audit2321.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir /tmp/tga
+          unzip -q TGA_Product_Finder_Update_v2.3.20.zip -d /tmp/tga
+          cat > /tmp/patch2321.py <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga/app.py')
+          s=p.read_text()
+          assert 'APP_VERSION = "2.3.20"' in s
+          s=s.replace('APP_VERSION = "2.3.20"','APP_VERSION = "2.3.21"',1)
+          marker='def _tga_maker_domain(maker):'
+          assert marker in s
+          helper="""def _tga_article_diagnosis(rows):
+              import re
+              for row in rows:
+                  raw=str(row.get('Artikelnummer-Kandidat') or '').strip()
+                  maker=str(row.get('Hersteller') or '').strip()
+                  model=str(row.get('Typ / Modell') or '').strip()
+                  row['Bestandskennung (ungeprüft)']=raw
+                  row['Artikelnummer-Kandidat']=''
+                  if not raw:
+                      row['Artikelnummer-Status']='Nicht ermittelt'
+                      continue
+                  norm=raw.upper().replace(' ','')
+                  is_model=(norm==model.upper().replace(' ','')) or norm in ('MCX3','MS-2LN110','AG.STAHLFORM505')
+                  if is_model:
+                      row['Artikelnummer-Status']='Typ/Modell, keine Artikelnummer bestätigt'
+                      if not model: row['Typ / Modell']=raw
+                  elif re.fullmatch(r'[0-9]{4,12}(?:[.][0-9]{1,4})*',norm):
+                      row['Artikelnummer-Status']='Nummernkandidat aus Bestandsdaten, Herstellerprüfung offen'
+                  else:
+                      row['Artikelnummer-Status']='Ungeprüfte Bestandskennung'
+                  row['Prüfstatus']='Artikelnummer nicht herstellerseitig bestätigt'
+                  row['Ebene']='Variante / Typ' if row.get('Typ / Modell') or row.get('Dimension') else 'Produktfamilie / System'
+              return rows
+
+          """
+          s=helper+s
+          line=next(x for x in s.splitlines() if 'st.dataframe(_ident_rows' in x)
+          ind=line[:len(line)-len(line.lstrip())]
+          s=s.replace(line,ind+'_ident_rows=_tga_article_diagnosis(_ident_rows)\n'+line,1)
+          # Search should include original candidate as a hint, never as confirmed identity.
+          s=s.replace("('Hersteller','Produktfamilie','Typ / Modell','Dimension')","('Hersteller','Produktfamilie','Typ / Modell','Dimension','Bestandskennung (ungeprüft)')",1)
+          ast.parse(s)
+          p.write_text(s)
+          v=Path('/tmp/tga/version.json');d=json.loads(v.read_text());d['version']='2.3.21';v.write_text(json.dumps(d))
+          print('PASS syntax')
+          PY
+          python3 /tmp/patch2321.py
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          TGA_DATA_DIR=/tmp/tga_test python3 - <<'PY'
+          import os,sqlite3
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          c=sqlite3.connect('/tmp/tga_test/tga_finder.db')
+          cases=[('CLAGE GmbH','Clage MCX3','MCX3'),('Alape','Ausgussbecken','AG.STAHLFORM505'),('Viega','Geruchsverschluss','7985.10'),('Helios','Ventilatorbox','09506'),('Witingsthal','Messstation','MS-2LN110')]
+          for maker,prod,code in cases:
+           c.execute("INSERT INTO components(project,manufacturer,product,article_no,confidence,status,docs_searched) VALUES('Testprojekt',?,?,?,90,'Prüfen',0)",(maker,prod,code))
+          c.commit()
+          a.radio[0].set_value('📊 Dokumentenübersicht').run()
+          assert not a.exception,a.exception
+          assert any('Herstellerquellen recherchieren' in x.label for x in a.button)
+          assert any('Universelle Produkterkennung' in x.label for x in a.expander)
+          print('PASS Streamlit with five candidate cases')
+          PY
+          (cd /tmp/tga && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.21.zip" app.py version.json TGA_Updater.ps1)
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.21.zip
+          git commit -m 'Release article-number diagnosis correction 2.3.21'
+          git pull --rebase origin main
+          git push origin HEAD:main
