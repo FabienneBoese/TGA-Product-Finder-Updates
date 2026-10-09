@@ -26,5 +26,22 @@ jobs:
           print('PROJECTS',db.execute('SELECT DISTINCT project FROM components').fetchall())
           print('DATAFRAME',len(at.dataframe),[x.value.shape for x in at.dataframe])
           print('DF_METHODS',[x for x in dir(at.dataframe[0]) if not x.startswith('_')] if len(at.dataframe) else [])
+          db.executemany("INSERT INTO components(project,manufacturer,product,model_type,article_no,confidence,status,docs_searched) VALUES(?,?,?,?,?,?,?,?)",[
+           ('Testprojekt','Helios','Ventilatorbox','SB 125 A','09506',100,'Prüfen',0),
+           ('Testprojekt','TROX','Brandschutzklappe','FK2-EU','',90,'Prüfen',0)])
+          db.commit()
+          at.radio[0].set_value('📊 Dokumentenübersicht').run()
+          print('OVERVIEW_EXCEPTIONS',list(at.exception))
+          print('OVERVIEW_DF',len(at.dataframe),[x.value.shape for x in at.dataframe])
+          print('OVERVIEW_CAPTIONS',[x.value for x in at.caption if 'Ausgewähltes Produkt:' in x.value])
+          print('DF_METHODS',[x for x in dir(at.dataframe[0]) if not x.startswith('_')] if len(at.dataframe) else [])
+          print('STATE_KEY',repr(at.session_state['doc_overview_selection']) if 'doc_overview_selection' in at.session_state else 'missing')
+          try:
+           at.session_state['doc_overview_selection']={'selection':{'rows':[1]}}
+           at.run()
+           print('INJECTED_SELECTION_CAPTIONS',[x.value for x in at.caption if 'Ausgewähltes Produkt:' in x.value])
+           print('INJECTED_EXCEPTIONS',list(at.exception))
+          except Exception as e:
+           print('INJECTION_ERROR',repr(e))
           print('SESSION_KEYS',list(at.session_state))
           PY
