@@ -1,7 +1,7 @@
 name: Publish TGA Product Finder v2.2.6 Generic Recognition Test
 on:
   push:
-    paths: ['.github/workflows/publish-v225.yml']
+    paths: ['.github/workflows/publish-v226.yml']
 permissions:
   contents: write
 jobs:
