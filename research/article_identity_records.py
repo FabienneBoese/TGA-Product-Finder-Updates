@@ -100,3 +100,18 @@ def extract_html_links(html, base_url, domain, limit=12):
         if url not in urls:urls.append(url)
         if len(urls)>=limit:break
     return urls
+
+def unique_single_article(records, model="", dimension=""):
+    """Return a candidate only with model evidence and exactly one distinct code."""
+    if not norm(model):return None
+    distinct=sorted({code for code, evidence in records if evidence in ("table-row","product-jsonld","pdf-line")})
+    return distinct[0] if len(distinct)==1 else None
+
+def product_scope(model="", dimension="", description=""):
+    """Defer broad product families and unspecified variants."""
+    model=str(model or "").strip()
+    if not model:return "zurückgestellt – Typ fehlt"
+    broad=("mapress therm","eurosmart ce")
+    if any(norm(x)==norm(model) for x in broad):
+        return "zurückgestellt – Produktfamilie"
+    return "Einzelprodukt – Recherche"
