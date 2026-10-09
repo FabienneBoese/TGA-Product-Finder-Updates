@@ -36,7 +36,7 @@ jobs:
           # Family value from Excel must be saved, not silently thrown away.
           insert="con.execute('INSERT INTO components(project,manufacturer,product,article_no,model_type,confidence,status,docs_searched,gewerk) VALUES(?,?,?,?,?,?,?,0,?)',(project,r.Hersteller,r.Bezeichnung,_final_article,_final_type,score(r),status(score(r)),r.Gewerk))"
           assert s.count(insert)==1
-          s=s.replace(insert,insert+"\n      con.execute('UPDATE components SET identifier_source=?,product_family=? WHERE id=?',(clean(r.Artikelnummer),clean(r.Artikelnummer) if _kind=='family' else '',con.execute('SELECT last_insert_rowid()').fetchone()[0]))",1)
+          s=s.replace(insert,insert+"\n"+next(line[:len(line)-len(line.lstrip())] for line in s.splitlines() if insert in line)+"con.execute('UPDATE components SET identifier_source=?,product_family=? WHERE id=?',(clean(r.Artikelnummer),clean(r.Artikelnummer) if _kind=='family' else '',con.execute('SELECT last_insert_rowid()').fetchone()[0]))",1)
           # A confirmed manufacturer product label is not proof of a specific variant.
           anchor="overview.append({'Status':docstatus.split()[0]"
           assert s.count(anchor)==1
