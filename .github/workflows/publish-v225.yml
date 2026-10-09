@@ -24,11 +24,11 @@ jobs:
           # Keep an audit trail of the originally supplied Excel identifier.
           anchor=next(line for line in s.splitlines() if "if 'model_type' not in ccols:" in line)
           assert s.count(anchor)==1
-          s=s.replace(anchor,anchor+"\\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"if 'identifier_source' not in ccols: c.execute('ALTER TABLE components ADD COLUMN identifier_source TEXT DEFAULT \\"\\"')"+"\\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"if 'product_family' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_family TEXT DEFAULT \\"\\"')",1)
+          s=s.replace(anchor,anchor+"\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"if 'identifier_source' not in ccols: c.execute('ALTER TABLE components ADD COLUMN identifier_source TEXT DEFAULT \"\"')"+"\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"if 'product_family' not in ccols: c.execute('ALTER TABLE components ADD COLUMN product_family TEXT DEFAULT \"\"')",1)
           # Before any automatic migration, save original value. Do not discard families.
           anchor=next(line for line in s.splitlines() if 'for _cid,_maker,_product,_article,_model in c.execute(' in line)
           assert s.count(anchor)==1
-          s=s.replace(anchor,anchor+"\\n"+anchor[:len(anchor)-len(anchor.lstrip())]+" "+ "if str(_article or '').strip():"+"\\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"  "+"c.execute('UPDATE components SET identifier_source=? WHERE id=? AND COALESCE(identifier_source,\\'\\')=\\'\\'',(_article,_cid))",1)
+          s=s.replace(anchor,anchor+"\n"+anchor[:len(anchor)-len(anchor.lstrip())]+" "+ "if str(_article or '').strip():"+"\n"+anchor[:len(anchor)-len(anchor.lstrip())]+"  "+"c.execute('UPDATE components SET identifier_source=? WHERE id=? AND COALESCE(identifier_source,\'\')=\'\'',(_article,_cid))",1)
           old="if _kind=='family' and str(_article or '').strip():\n   c.execute('UPDATE components SET article_no=? WHERE id=?',('',_cid))"
           assert s.count(old)==1
           new="if _kind=='family' and str(_article or '').strip():\n   c.execute('UPDATE components SET product_family=?,article_no=? WHERE id=?',(_article,'',_cid))"
