@@ -30,7 +30,7 @@ jobs:
             browser=pw.chromium.launch(headless=True,args=['--no-sandbox'])
             page=browser.new_page(viewport={'width':1600,'height':1000})
             page.goto('http://127.0.0.1:8501',wait_until='domcontentloaded',timeout=60000)
-            page.get_by_role('radio',name='📊 Dokumentenübersicht').check(timeout=30000)
+            page.locator('[data-testid="stSidebar"] label').filter(has_text='Dokumentenübersicht').first.click(timeout=15000)
             page.wait_for_timeout(3000)
             db=sqlite3.connect('/tmp/tga_ui_data/tga_finder.db')
             db.execute("INSERT INTO components(project,manufacturer,product,confidence,status,docs_searched) VALUES('Testprojekt','TROX','FK2-EU',90,'Prüfen',0)")
@@ -39,7 +39,7 @@ jobs:
             page.wait_for_timeout(4000)
             page.screenshot(path='/tmp/inline-before.png',full_page=True)
             print('TABLE EDITOR:',page.locator('[data-testid="stDataFrame"]').count(),page.locator('[data-testid="stDataEditor"]').count())
-            print('BODY SNIPPET:',page.locator('body').inner_text()[-1800:])
+            print('BODY SNIPPET:',page.locator('body').inner_text()[-2500:])
             assert page.get_by_text('Dokumentationsgruppe',exact=False).count()>0
             print('PASS browser renders inline documentation group')
             browser.close()
