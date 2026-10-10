@@ -22,6 +22,7 @@ KNOWN_PRODUCTS={
  ("helios","sb 125 a"):"https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506",
  ("helios","pa 10"):"https://www.heliosventilatoren.de/de/produkte/messen-steuern-regeln/betriebsschalter/pa-10-01735",
  ("geberit","sigma50"):"https://catalog.geberit.de/de-DE/product/PRO_841159",
+ ("danfoss","ecl comfort 310"):"https://designcenter.danfoss.com/products/climate-solutions-for-heating/electronic-controllers-and-monitoring-solutions/ecl-comfort-controllers/ecl-comfort-310?tab=products",
  ("jung pumpen","u3k"):"https://www.jung-pumpen.de/produkte/pumpen/u3/u3k-10-m-leitung",
  ("rockwool","conlit 150"):"https://www.rockwool.com/de/produkte/conlit-150-u/",
  ("trox","fkrs-eu"):"https://www.trox.de/brandschutzklappen/fkrs-eu-065efc2b4efeb254",
@@ -34,7 +35,11 @@ DOCUMENT_EVIDENCE={
 }
 def documented_candidates(maker,product,model):
  key=(str(maker or "")+" "+str(product or "")+" "+str(model or "")).casefold()
- return [(code,url) for (brand,match),(code,url) in DOCUMENT_EVIDENCE.items() if brand in key and match in key]
+ out=[(code,url) for (brand,match),(code,url) in DOCUMENT_EVIDENCE.items() if brand in key and match in key]
+ if "danfoss" in key and "ecl comfort 310" in key:
+  source="https://assets.danfoss.com/documents/latest/374694/AI155886473192de-000702.pdf"
+  out.extend([("087H3040",source),("087H3044",source)])
+ return out
 
 def seeded_urls(maker,product,model):
  text=" ".join((str(product or ""),str(model or ""))).casefold()
