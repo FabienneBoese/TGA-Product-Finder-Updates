@@ -23,7 +23,7 @@ jobs:
           assert 'APP_VERSION = "2.3.30"' in s
           original="""     _hits,_err=_tga_bulk_candidates(_maker,_q,_r.get('Typ / Modell',''),_r.get('Dimension',''))
                _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})"""
-                    replacement="""     _model=str(_r.get('Typ / Modell') or '').strip()
+          replacement="""     _model=str(_r.get('Typ / Modell') or '').strip()
                _dimension=str(_r.get('Dimension') or '').strip()
                _scope=product_scope(_model,_dimension,str(_r.get('Produktfamilie') or ''))
                if not _maker:
