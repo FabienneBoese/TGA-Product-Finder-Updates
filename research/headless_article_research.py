@@ -20,6 +20,8 @@ def domain_for(maker):
 # Only official domains are accepted, and codes require product-local evidence.
 KNOWN_PRODUCTS={
  ("helios","sb 125 a"):"https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506",
+ ("helios","pa 10"):"https://www.heliosventilatoren.de/de/produkte/messen-steuern-regeln/betriebsschalter/pa-10-01735",
+ ("geberit","sigma50"):"https://catalog.geberit.de/de-DE/product/PRO_841159",
  ("trox","fk2-eu"):"https://www.trox.de/brandschutzklappen/fk2-eu-d43c8f48f846955c",
  ("trox","tve"):"https://www.trox.de/vvs-regelgeraete/tve-3fb25f4ac74c6313",
 }
@@ -77,6 +79,10 @@ def inspect(session,row):
     attempts.append(url+" PDF gefunden; Textextraktion noch nicht aktiviert")
     continue
    records=source_records(response.text,model=model,dimension=dimension,product=product)
+   # A family catalogue must not assign its unrelated variant numbers.
+   if "catalog.geberit.de" in urlparse(url).hostname.lower() and not model:
+    records=[]
+    attempts.append(url+" Produktfamilie: Variantenauswahl erforderlich")
    attempts.append(url+(" Kandidaten: "+str(len(records)) if records else " keine belegte Artikelnummer"))
    hits.extend((code,url) for code,_ in records)
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
