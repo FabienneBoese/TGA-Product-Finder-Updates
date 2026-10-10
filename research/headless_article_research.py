@@ -22,6 +22,7 @@ KNOWN_PRODUCTS={
  ("helios","sb 125 a"):"https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506",
  ("helios","pa 10"):"https://www.heliosventilatoren.de/de/produkte/messen-steuern-regeln/betriebsschalter/pa-10-01735",
  ("geberit","sigma50"):"https://catalog.geberit.de/de-DE/product/PRO_841159",
+ ("rockwool","conlit 150"):"https://www.rockwool.com/de/produkte/conlit-150-u/",
  ("trox","fkrs-eu"):"https://www.trox.de/brandschutzklappen/fkrs-eu-065efc2b4efeb254",
  ("trox","fk2-eu"):"https://www.trox.de/brandschutzklappen/fk2-eu-d43c8f48f846955c",
  ("trox","tve"):"https://www.trox.de/vvs-regelgeraete/tve-3fb25f4ac74c6313",
