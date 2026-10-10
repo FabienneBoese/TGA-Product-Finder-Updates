@@ -17,12 +17,14 @@ class ManufacturerFinderTests(unittest.TestCase):
     def test_missing_manufacturer(self):
         result = classify(FakeSession(), {"Hersteller": "", "Produkt": "WC", "Typ / Modell": ""})
         self.assertEqual(result["Suchstatus"], "Hersteller fehlt")
+        self.assertEqual(result["Herstellerwebsite"], "")
     @patch("manufacturer_page_finder.discover")
     def test_official_page_candidate(self, discover):
         url = "https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506"
         discover.return_value = ([url], "")
         result = classify(FakeSession(), {"Hersteller": "Helios", "Produkt": "Ventilatorbox", "Typ / Modell": "SB 125 A"})
         self.assertEqual(result["Produktseiten-URL"], url)
+        self.assertEqual(result["Herstellerwebsite"], "https://www.heliosventilatoren.de/")
         self.assertIn("Prüfung", result["Suchstatus"])
     @patch("manufacturer_page_finder.discover")
     def test_unverified_official_links(self, discover):
