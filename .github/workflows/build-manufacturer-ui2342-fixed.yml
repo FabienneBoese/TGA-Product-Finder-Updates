@@ -1,0 +1,74 @@
+name: Release manufacturer multi-source access v2.3.42
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer-ui2342-fixed.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf playwright
+          python3 -m playwright install --with-deps chromium >/dev/null 2>&1
+          mkdir -p /tmp/tga2342
+          unzip -q TGA_Product_Finder_Update_v2.3.41.zip -d /tmp/tga2342
+          python3 research/build_manufacturer_ui2342.py
+          TGA_DATA_DIR=/tmp/tga2342_data python3 - <<'PY'
+          import os,ast,requests,re
+          from pathlib import Path
+          from urllib.parse import urlparse,parse_qs,unquote
+          from bs4 import BeautifulSoup
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2342')
+          app=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not app.exception,app.exception
+          src=Path('app.py').read_text(encoding='utf-8')
+          tree=ast.parse(src)
+          funcs={n.name:n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name in ('_site_host','_site_check','_site_find','_site_browser_check')}
+          mapping=next(n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_site_official' for t in n.targets))
+          channels=next(n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_site_channels' for t in n.targets))
+          ns={'_site_channels':ast.literal_eval(channels),'_site_requests':requests,'_site_re':re,'_site_parse':urlparse,'_site_qs':parse_qs,'_site_unquote':unquote,'_site_soup':BeautifulSoup,'_site_official':ast.literal_eval(mapping)}
+          exec(compile(ast.Module(body=list(funcs.values()),type_ignores=[]),'manufacturer_lookup','exec'),ns)
+          # Test actual programmatic browser navigation and page-content access.
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as pw:
+              browser=pw.chromium.launch(headless=True)
+              page=browser.new_page()
+              response=page.goto('https://example.com',wait_until='domcontentloaded',timeout=25000)
+              assert response.status==200
+              assert 'Example Domain' in page.content()
+              browser.close()
+          print('PASS: real Chromium browser programmatically fetched page content')
+          with requests.Session() as session:
+              for maker in ('TROX','Helios','Geberit'):
+                  url,status=ns['_site_find'](session,maker)
+                  assert url and ('Erreichbar' in status or 'Browserzugriff' in status),(maker,url,status)
+                  print('MANUFACTURER:',maker,url,status)
+          # Force HTTP 403 from mocked HTTP layer, prove browser fallback is invoked.
+          class FakeResponse:
+              status_code=403
+              url='https://example.com/'
+          class FakeSession:
+              def get(self,*a,**kw):return FakeResponse()
+          url,status=ns['_site_check'](FakeSession(),'https://example.com/','example.com')
+          assert url and status.startswith('Browserzugriff'),(url,status)
+          print('PASS: blocked HTTP request recovered using real Chromium')
+          PY
+          (cd /tmp/tga2342 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.42.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.42.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.42','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.42.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.42.zip update_manifest.json
+          git commit -m 'Release real browser manufacturer access v2.3.42'
+          git pull --rebase origin main
+          git push origin HEAD:main
