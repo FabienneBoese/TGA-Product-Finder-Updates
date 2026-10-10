@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
@@ -53,8 +54,15 @@ def classify(session, row):
 def run(source, destination):
     with open(source, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f, delimiter=";"))
-    session = requests.Session()
-    results = [classify(session, row) for row in rows]
+    groups = {}
+    for index, row in enumerate(rows):
+        groups.setdefault(domain_for(row.get("Hersteller", "")) or "unknown", []).append((index, row))
+    def process_group(items):
+        with requests.Session() as session:
+            return [(index, classify(session, row)) for index, row in items]
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        batches = list(pool.map(process_group, groups.values()))
+    results = [result for _, result in sorted((pair for batch in batches for pair in batch), key=lambda item: item[0])]
     Path(destination).parent.mkdir(parents=True, exist_ok=True)
     fields = list(dict.fromkeys(k for row in results for k in row))
     with open(destination, "w", encoding="utf-8-sig", newline="") as f:
