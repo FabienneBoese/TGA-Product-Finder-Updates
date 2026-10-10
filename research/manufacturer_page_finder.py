@@ -15,7 +15,7 @@ def classify(session, row):
     model = row.get("Typ / Modell", "")
     domain = domain_for(maker)
     result = dict(row)
-    result.update({"Herstellerdomain": domain, "Herstellerseiten-Kandidaten": "",
+    result.update({"Herstellerdomain": domain, "Herstellerwebsite": ("https://www." + domain + "/" if domain else ""), "Herstellerseiten-Kandidaten": "",
                    "Produktseiten-URL": "", "Suchstatus": "", "Suchdiagnose": ""})
     if not domain:
         result["Suchstatus"] = "Hersteller fehlt" if not maker.strip() else "Herstellerdomain unbekannt"
