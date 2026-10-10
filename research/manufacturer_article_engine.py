@@ -32,9 +32,9 @@ def source_records(html,model="",dimension="",product=""):
   c=code_from_label(joined)
   if c:add(c,"Tabellenzeile")
   # Article number may precede the model, as on Helios catalogue tables.
-  for cell in cells:
-   if valid(cell) and cell!=model and not compact(cell)==compact(dimension):
-    if len(cells)>1 and (model or product):add(cell,"Produktzeile")
+  for idx,cell in enumerate(cells):
+   if idx==0 and valid(cell) and cell!=model and compact(cell)!=compact(dimension) and len(cells)>1 and model:
+    add(cell,"Produktzeile")
  # Detail page: label/value rows, but only if title matches model.
  title=" ".join(t.get_text(" ",strip=True) for t in soup.select("h1")[:2])
  if model and compact(model) in compact(title):
