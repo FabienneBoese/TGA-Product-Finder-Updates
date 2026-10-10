@@ -46,7 +46,7 @@ def discover(session,domain,product,model,maker=""):
    for a in soup.select("a[href]"):
     href=a.get("href","")
     if href.startswith("/url?"):href=parse_qs(urlparse(href).query).get("q",[""])[0]
-   if href.startswith("/l/?"):href=parse_qs(urlparse(href).query).get("uddg",[""])[0]
+    if href.startswith("/l/?"):href=parse_qs(urlparse(href).query).get("uddg",[""])[0]
     if href.startswith("https://") and same_host(href,domain) and href not in urls:
      urls.append(href)
     if len(urls)>=5:break
