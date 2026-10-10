@@ -36,7 +36,7 @@ def discover(session,domain,product,model,maker=""):
  notes=[]
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
- for endpoint,param in (("https://www.bing.com/search","q"),("https://www.google.com/search","q"),("https://www.mojeek.com/search","q")):
+ for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q"),("https://www.mojeek.com/search","q")):
   if len(urls)>=5:break
   try:
    response=session.get(endpoint,params={param:query},headers=HEADERS,timeout=12)
@@ -44,6 +44,11 @@ def discover(session,domain,product,model,maker=""):
     notes.append(urlparse(endpoint).hostname+" HTTP "+str(response.status_code))
     continue
    soup=BeautifulSoup(response.text,"html.parser")
+   for item in soup.select("item"):
+    link=item.find("link")
+    if link:
+     href=link.get_text(strip=True)
+     if href.startswith("https://") and same_host(href,domain) and href not in urls:urls.append(href)
    for a in soup.select("a[href]"):
     href=a.get("href","")
     if href.startswith("/url?"):href=parse_qs(urlparse(href).query).get("q",[""])[0]
