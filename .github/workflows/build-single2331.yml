@@ -1,0 +1,71 @@
+name: Integrate single-product bulk 2331
+on:
+  push:
+    paths: ['.github/workflows/build-single2331.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_article_identity_records.py' -v
+          mkdir -p /tmp/tga2331
+          unzip -q TGA_Product_Finder_Update_v2.3.30.zip -d /tmp/tga2331
+          python3 - <<'PY'
+          from pathlib import Path
+          import ast,json
+          p=Path('/tmp/tga2331/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert 'APP_VERSION = "2.3.30"' in s
+          original="""     _hits,_err=_tga_bulk_candidates(_maker,_q,_r.get('Typ / Modell',''),_r.get('Dimension',''))
+     _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})"""
+          replacement="""     _model=str(_r.get('Typ / Modell') or '').strip()
+     _dimension=str(_r.get('Dimension') or '').strip()
+     _scope=product_scope(_model,_dimension,str(_r.get('Produktfamilie') or ''))
+     if not _maker:
+      _hits=[];_status='Zurückgestellt – Hersteller fehlt'
+     elif _scope!='Einzelprodukt – Recherche':
+      _hits=[];_status=_scope
+     else:
+      _hits,_err=_tga_bulk_candidates(_maker,_q,_model,_dimension)
+      _distinct=sorted(set(h[0] for h in _hits))
+      _status=('Eindeutiger Kandidat – Herstellerprüfung offen' if len(_distinct)==1
+               else 'Mehrdeutig – keine automatische Zuordnung' if len(_distinct)>1
+               else _err or 'Keine belegte Artikelnummer')
+     _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Typ / Modell':_model,'Dimension':_dimension,'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_status})"""
+          assert original in s,'Bulk integration signature changed'
+          s=s.replace(original,replacement,1)
+          s=s.replace('APP_VERSION = "2.3.30"','APP_VERSION = "2.3.31"',1)
+          assert 'elif _scope!=\'Einzelprodukt – Recherche\':' in s
+          assert 'Mehrdeutig – keine automatische Zuordnung' in s
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          v=Path('/tmp/tga2331/version.json')
+          d=json.loads(v.read_text());d['version']='2.3.31';v.write_text(json.dumps(d))
+          print('PASS single-product bulk integration')
+          PY
+          TGA_DATA_DIR=/tmp/tga2331_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2331')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          print('PASS Streamlit startup')
+          PY
+          (cd /tmp/tga2331 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.31.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.31.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.31','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.31.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.31.zip update_manifest.json
+          git commit -m 'Release integrated single-product bulk research 2.3.31'
+          git pull --rebase origin main
+          git push origin HEAD:main
