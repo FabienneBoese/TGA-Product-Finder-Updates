@@ -43,7 +43,8 @@ jobs:
           idx=indexes[0]
           assert lines[idx+1].lstrip().startswith("_bulk.append(")
           import textwrap
-          replacement=textwrap.dedent(replacement).lstrip()\n          replacement=textwrap.indent(replacement, lines[idx][:len(lines[idx])-len(lines[idx].lstrip())])
+          replacement=textwrap.dedent(replacement).lstrip()
+          replacement=textwrap.indent(replacement, lines[idx][:len(lines[idx])-len(lines[idx].lstrip())])
           lines[idx:idx+2]=[replacement+"\\n"]
           s="".join(lines)
           s=s.replace('APP_VERSION = "2.3.30"','APP_VERSION = "2.3.31"',1)
