@@ -112,8 +112,7 @@ def internal_product_links(session,domain,product,model):
      if not url.startswith("https://") or not same_host(url,domain):continue
      if url in seen:continue
      seen.add(url)
-     score=product_page_score(url,a.get_text(" ",strip=True),product,model)
-     if score:ranked.append((score,url))
+     candidates.append((url,a.get_text(" ",strip=True)))
    except requests.RequestException:continue
   NAVIGATION_CACHE[domain]=candidates
  for url,title in candidates:
