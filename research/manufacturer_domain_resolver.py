@@ -89,7 +89,9 @@ def resolve(session, maker, cache, known_domain=""):
                 final = domain_name(response.url)
                 if response.status_code != 200 or not response.url.startswith("https://"):
                     continue
-                # A redirect to a different domain is never proof of manufacturer identity.\n                if final != host and final != known_domain:\n                    continue
+                # A redirect to a different domain is never proof of manufacturer identity.
+                if final != host and final != known_domain:
+                    continue
                 status = "Website erreichbar; Herstellerzuordnung prüfen"
                 if known_domain and final == known_domain:
                     status = "Bekannte Herstellerdomain; Website erreichbar"
