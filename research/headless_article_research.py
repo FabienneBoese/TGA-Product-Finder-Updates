@@ -61,7 +61,7 @@ def sitemap_urls(session,domain,model,product=""):
   path=re.sub(r"[^a-z0-9]","",urlparse(u).path.casefold())
   score=sum(len(t) for t in terms if t in path)
   if score>=4:ranked.append((score,u))
- return [u for _,u in sorted(ranked,key=lambda x:-x[0])[:5]]
+ return [u for _,u in sorted(ranked,key=lambda x:-x[0])[:8]]
 
 
 # Product-page discovery is independent from article-number and document extraction.
@@ -120,7 +120,7 @@ def internal_product_links(session,domain,product,model):
  for url,title in candidates:
   score=product_page_score(url,title,product,model)
   if score:ranked.append((score,url))
- return [url for _,url in sorted(ranked,key=lambda x:-x[0])[:5]]
+ return [url for _,url in sorted(ranked,key=lambda x:-x[0])[:8]]
 
 DISABLED_SEARCH_PROVIDERS=set()
 def discover(session,domain,product,model,maker=""):
@@ -134,7 +134,7 @@ def discover(session,domain,product,model,maker=""):
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
  for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q")):
-  if len(urls)>=5:break
+  if len(urls)>=8:break
   if endpoint in DISABLED_SEARCH_PROVIDERS:continue
   try:
    response=session.get(endpoint,params={param:query},headers=HEADERS,timeout=12)
@@ -154,7 +154,7 @@ def discover(session,domain,product,model,maker=""):
     if href.startswith("/l/?"):href=parse_qs(urlparse(href).query).get("uddg",[""])[0]
     if href.startswith("https://") and same_host(href,domain) and href not in urls:
      urls.append(href)
-    if len(urls)>=5:break
+    if len(urls)>=8:break
    if not urls:notes.append(urlparse(endpoint).hostname+" ohne Hersteller-URLs")
   except requests.RequestException as exc:
    notes.append(urlparse(endpoint).hostname+" "+type(exc).__name__)
@@ -171,7 +171,7 @@ def inspect(session,row):
  if not str(maker or "").strip():out["Status"]="Hersteller fehlt";return out
  if not domain:out["Status"]="Herstellerdomain unbekannt";return out
  urls,err=discover(session,domain,product,model,maker)
- out["Gefundene URLs"]=" | ".join(urls)
+ out["Gefundene URLs"]=" | ".join(u for u in urls if u.startswith("https://") and same_host(u,domain))
  out["Suchdienst-Diagnose"]=err
  if not urls:
   out["Produktseiten-Status"]="Keine Produktseite gefunden"
