@@ -22,11 +22,20 @@ KNOWN_PRODUCTS={
  ("helios","sb 125 a"):"https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506",
  ("helios","pa 10"):"https://www.heliosventilatoren.de/de/produkte/messen-steuern-regeln/betriebsschalter/pa-10-01735",
  ("geberit","sigma50"):"https://catalog.geberit.de/de-DE/product/PRO_841159",
+ ("jung pumpen","u3k"):"https://www.jung-pumpen.de/produkte/pumpen/u3/u3k-10-m-leitung",
  ("rockwool","conlit 150"):"https://www.rockwool.com/de/produkte/conlit-150-u/",
  ("trox","fkrs-eu"):"https://www.trox.de/brandschutzklappen/fkrs-eu-065efc2b4efeb254",
  ("trox","fk2-eu"):"https://www.trox.de/brandschutzklappen/fk2-eu-d43c8f48f846955c",
  ("trox","tve"):"https://www.trox.de/vvs-regelgeraete/tve-3fb25f4ac74c6313",
 }
+DOCUMENT_EVIDENCE={
+ ("emco","1675 001 00"):("1675 001 00","https://www.emco-bath.com/de/wp-content/uploads/2025/05/855_1437_Spotlight_Accessoires_2025_DE_GB.pdf"),
+ ("jung pumpen","u3k"):("JP50002","https://www.jung-pumpen.de/fileadmin/user_upload/website/Service/Downloads/Prospekte/DE/Pentair_Jung_Pumpen_DE_Ausgabe_25.pdf"),
+}
+def documented_candidates(maker,product,model):
+ key=(str(maker or "")+" "+str(product or "")+" "+str(model or "")).casefold()
+ return [(code,url) for (brand,match),(code,url) in DOCUMENT_EVIDENCE.items() if brand in key and match in key]
+
 def seeded_urls(maker,product,model):
  text=" ".join((str(product or ""),str(model or ""))).casefold()
  return [url for (m,k),url in KNOWN_PRODUCTS.items() if m in str(maker).casefold() and k in text]
@@ -98,6 +107,10 @@ def inspect(session,row):
    hits.extend((code,url) for code,_ in records)
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
  out["Quellen-Diagnose"]=" | ".join(attempts)
+ out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
+ out["Quellen"]=" | ".join(dict.fromkeys(u for _,u in hits))
+ for code,url in documented_candidates(maker,product,model):
+  if (code,url) not in hits:hits.append((code,url))
  out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
  out["Quellen"]=" | ".join(dict.fromkeys(u for _,u in hits))
  out["Status"]="Kandidaten – manuell prüfen" if hits else "Keine belegte Artikelnummer"
