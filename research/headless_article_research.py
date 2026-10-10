@@ -30,6 +30,7 @@ def seeded_urls(maker,product,model):
  text=" ".join((str(product or ""),str(model or ""))).casefold()
  return [url for (m,k),url in KNOWN_PRODUCTS.items() if m in str(maker).casefold() and k in text]
 
+DISABLED_SEARCH_PROVIDERS=set()
 def discover(session,domain,product,model,maker=""):
  from urllib.parse import parse_qs,unquote
  urls=seeded_urls(maker,product,model)
@@ -38,9 +39,11 @@ def discover(session,domain,product,model,maker=""):
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
  for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q"),("https://www.mojeek.com/search","q")):
   if len(urls)>=5:break
+  if endpoint in DISABLED_SEARCH_PROVIDERS:continue
   try:
    response=session.get(endpoint,params={param:query},headers=HEADERS,timeout=12)
    if response.status_code!=200:
+    if response.status_code in (403,429):DISABLED_SEARCH_PROVIDERS.add(endpoint)
     notes.append(urlparse(endpoint).hostname+" HTTP "+str(response.status_code))
     continue
    soup=BeautifulSoup(response.text,"html.parser")
