@@ -11,7 +11,7 @@ module=Path("research/private_diagnosis_upload.py").read_text(encoding="utf-8")
 s=module+"\n"+s
 
 # Controls live next to the article-research action, not in a global configuration panel.
-anchor="    _bulk=[]"
+anchor="_bulk=[]"
 assert anchor in s, "Bulk research block changed; refusing unsafe patch"
 controls="""   st.markdown('##### Diagnoseberichte')
    _upload_enabled=st.checkbox('Diagnose-CSV nach der Recherche automatisch in das private GitHub-Repository hochladen',value=False,key='tga_private_diagnosis_enabled')
@@ -29,7 +29,7 @@ button_start=s.rfind("   if st.button(",0,bulk_start)
 assert button_start>0
 s=s[:button_start]+controls+s[button_start:]
 
-needle="    st.session_state['bulk_article_results']=_bulk"
+needle="     st.session_state['bulk_article_results']=_bulk"
 assert needle in s
 upload="""    st.session_state['bulk_article_results']=_bulk
     try:
