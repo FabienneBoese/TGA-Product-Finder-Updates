@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
-from manufacturer_article_engine import source_records,pdf_records,same_host
+from manufacturer_article_engine import source_records,same_host
 
 DOMAINS={"helios":"heliosventilatoren.de","trox":"trox.de","lunos":"lunos.de","rockwool":"rockwool.com","geberit":"geberit.de","grohe":"grohe.de","viega":"viega.de","clage":"clage.de","alape":"alape.com","witingsthal":"wittingsthal.de","wittingsthal":"wittingsthal.de","danfoss":"danfoss.com","kermi":"kermi.com","grundfos":"grundfos.com","duravit":"duravit.de","laufen":"laufen.com","hewi":"hewi.de","jung":"jung-pumpen.de","viessmann":"viessmann.de","vaillant":"vaillant.de","reflex":"reflex-winkelmann.com","wika":"wika.com","imi heimeier":"imi-hydronic.com","ostendorf":"ostendorf-kunststoffe.com","kemper":"kemper-group.com","villeroy":"villeroy-boch.de","newo":"newo.de","herzbach":"herzbach.com","emco":"emco-bath.com","schedel":"schedel-bad.de"}
 HEADERS={"User-Agent":"Mozilla/5.0 (compatible; TGA-Product-Finder-Diagnosis/1.0)"}
@@ -30,18 +30,6 @@ KNOWN_PRODUCTS={
  ("trox","fk2-eu"):"https://www.trox.de/brandschutzklappen/fk2-eu-d43c8f48f846955c",
  ("trox","tve"):"https://www.trox.de/vvs-regelgeraete/tve-3fb25f4ac74c6313",
 }
-DOCUMENT_EVIDENCE={
- ("emco","1675 001 00"):("1675 001 00","https://www.emco-bath.com/de/wp-content/uploads/2025/05/855_1437_Spotlight_Accessoires_2025_DE_GB.pdf"),
- ("jung pumpen","u3k"):("JP50002","https://www.jung-pumpen.de/fileadmin/user_upload/website/Service/Downloads/Prospekte/DE/Pentair_Jung_Pumpen_DE_Ausgabe_25.pdf"),
-}
-def documented_candidates(maker,product,model):
- key=(str(maker or "")+" "+str(product or "")+" "+str(model or "")).casefold()
- out=[(code,url) for (brand,match),(code,url) in DOCUMENT_EVIDENCE.items() if brand in key and match in key]
- if "danfoss" in key and "ecl comfort 310" in key:
-  source="https://assets.danfoss.com/documents/latest/374694/AI155886473192de-000702.pdf"
-  out.extend([("087H3040",source),("087H3044",source)])
- return out
-
 def seeded_urls(maker,product,model):
  text=" ".join((str(product or ""),str(model or ""))).casefold()
  return [url for (m,k),url in KNOWN_PRODUCTS.items() if m in str(maker).casefold() and k in text]
@@ -78,7 +66,7 @@ def discover(session,domain,product,model,maker=""):
  notes=[]
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
- for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q"),("https://www.mojeek.com/search","q")):
+ for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q")):
   if len(urls)>=5:break
   if endpoint in DISABLED_SEARCH_PROVIDERS:continue
   try:
@@ -113,18 +101,13 @@ def inspect(session,row):
  domain=domain_for(maker)
  out=dict(row)
  out.update({"Herstellerdomain":domain,"Gefundene URLs":"","Quellen-Diagnose":"","Suchdienst-Diagnose":"","Artikelnummern-Kandidaten":"","Quellen":"","Status":""})
- if not maker.strip():out["Status"]="Hersteller fehlt";return out
+ if not str(maker or "").strip():out["Status"]="Hersteller fehlt";return out
  if not domain:out["Status"]="Herstellerdomain unbekannt";return out
  urls,err=discover(session,domain,product,model,maker)
  out["Gefundene URLs"]=" | ".join(urls)
  out["Suchdienst-Diagnose"]=err
  if not urls:
-  docs=documented_candidates(maker,product,model)
-  if docs:
-   out["Artikelnummern-Kandidaten"]=", ".join(c for c,u in docs)
-   out["Quellen"]=" | ".join(u for c,u in docs)
-   out["Status"]="Kandidaten aus Herstellerdokumenten – Variante prüfen"
-  else:out["Status"]="Keine Hersteller-URLs: "+err
+  out["Status"]="Keine Hersteller-Produktseite: "+err
   return out
  attempts=[];hits=[]
  for url in urls:
@@ -134,7 +117,7 @@ def inspect(session,row):
    if not same_host(response.url,domain):attempts.append(url+" Fremddomain");continue
    pdf="pdf" in response.headers.get("Content-Type","").lower() or urlparse(url).path.lower().endswith(".pdf")
    if pdf:
-    attempts.append(url+" PDF gefunden; Textextraktion noch nicht aktiviert")
+    attempts.append(url+" PDF nicht für Artikelnummernsuche verwendet")
     continue
    records=source_records(response.text,model=model,dimension=dimension,product=product)
    # A family catalogue must not assign its unrelated variant numbers.
@@ -145,10 +128,6 @@ def inspect(session,row):
    hits.extend((code,url) for code,_ in records)
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
  out["Quellen-Diagnose"]=" | ".join(attempts)
- out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
- out["Quellen"]=" | ".join(dict.fromkeys(u for _,u in hits))
- for code,url in documented_candidates(maker,product,model):
-  if (code,url) not in hits:hits.append((code,url))
  out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
  out["Quellen"]=" | ".join(dict.fromkeys(u for _,u in hits))
  out["Status"]="Kandidaten – manuell prüfen" if hits else "Keine belegte Artikelnummer"
