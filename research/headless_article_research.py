@@ -63,10 +63,61 @@ def sitemap_urls(session,domain,model,product=""):
   if score>=4:ranked.append((score,u))
  return [u for _,u in sorted(ranked,key=lambda x:-x[0])[:5]]
 
+
+# Product-page discovery is independent from article-number and document extraction.
+# All candidate URLs must belong to the manufacturer's official domain.
+def search_terms(product,model):
+ stop={"und","fuer","für","mit","ohne","alle","element","artikel","produkt","chrom","weiss","weiß","gewerbe","hersteller","bad","ein","eine","von","die","der","das","den","bei","auf","mm","dn"}
+ tokens=re.findall(r"[a-z0-9]+",str(model or "").casefold().replace("ß","ss"))
+ tokens += re.findall(r"[a-z0-9]+",str(product or "").casefold().replace("ß","ss"))
+ return list(dict.fromkeys(t for t in tokens if len(t)>=3 and t not in stop))[:12]
+
+def product_page_score(url,title,product,model):
+ """Evidence-weighted match; never count a manufacturer home page as a product page."""
+ from urllib.parse import unquote
+ path=unquote(urlparse(url).path).casefold()
+ title=str(title or "").casefold()
+ if path in ("","/","/de","/de-de","/de/") or path.endswith((".pdf",".xml")):return 0
+ model_tokens=search_terms("",model)
+ product_tokens=search_terms(product,"")
+ path_flat=re.sub(r"[^a-z0-9]","",path)
+ title_flat=re.sub(r"[^a-z0-9]","",title)
+ model_matches=sum(len(t) for t in model_tokens if t in path_flat or t in title_flat)
+ product_matches=sum(len(t) for t in product_tokens if t in path_flat or t in title_flat)
+ if model_tokens and not model_matches:return 0
+ if not model_tokens and not product_matches:return 0
+ score=3*model_matches+product_matches
+ if any(x in path for x in ("/produkt","/product","/artikel","/catalog","/katalog","/brandschutzklappen","/series/")):score+=6
+ return score
+
+def internal_product_links(session,domain,product,model):
+ """Discover official catalog/category links without relying on search-engine results."""
+ roots=["https://"+domain+"/","https://www."+domain+"/"]
+ if domain=="geberit.de":roots=["https://catalog.geberit.de/de-DE","https://www.geberit.de/"]
+ elif domain=="trox.de":roots=["https://www.trox.de/brand--und-rauchschutzsysteme/brandschutzklappen-9abc97fe0357ecd2","https://www.trox.de/"]
+ seen=set();ranked=[]
+ for root in roots:
+  try:
+   response=session.get(root,headers=HEADERS,timeout=8)
+   if response.status_code!=200 or not same_host(response.url,domain):continue
+   soup=BeautifulSoup(response.text,"html.parser")
+   for a in soup.select("a[href]")[:2000]:
+    from urllib.parse import urljoin
+    url=urljoin(response.url,a.get("href",""))
+    if not url.startswith("https://") or not same_host(url,domain):continue
+    if url in seen:continue
+    seen.add(url)
+    score=product_page_score(url,a.get_text(" ",strip=True),product,model)
+    if score:ranked.append((score,url))
+  except requests.RequestException:continue
+ return [url for _,url in sorted(ranked,key=lambda x:-x[0])[:5]]
+
 DISABLED_SEARCH_PROVIDERS=set()
 def discover(session,domain,product,model,maker=""):
  from urllib.parse import parse_qs,unquote
  urls=seeded_urls(maker,product,model)
+ for candidate in internal_product_links(session,domain,product,model):
+  if candidate not in urls:urls.append(candidate)
  for candidate in sitemap_urls(session,domain,model,product):
   if candidate not in urls:urls.append(candidate)
  notes=[]
@@ -106,16 +157,17 @@ def inspect(session,row):
  dimension=row.get("Dimension","")
  domain=domain_for(maker)
  out=dict(row)
- out.update({"Herstellerdomain":domain,"Gefundene URLs":"","Quellen-Diagnose":"","Suchdienst-Diagnose":"","Artikelnummern-Kandidaten":"","Quellen":"","Status":""})
+ out.update({"Herstellerdomain":domain,"Gefundene URLs":"","Quellen-Diagnose":"","Suchdienst-Diagnose":"","Artikelnummern-Kandidaten":"","Quellen":"","Status":"","Produktseiten-Status":"","Produktseiten-URL":""})
  if not str(maker or "").strip():out["Status"]="Hersteller fehlt";return out
  if not domain:out["Status"]="Herstellerdomain unbekannt";return out
  urls,err=discover(session,domain,product,model,maker)
  out["Gefundene URLs"]=" | ".join(urls)
  out["Suchdienst-Diagnose"]=err
  if not urls:
+  out["Produktseiten-Status"]="Keine Produktseite gefunden"
   out["Status"]="Keine Hersteller-Produktseite: "+err
   return out
- attempts=[];hits=[]
+ attempts=[];hits=[];verified_pages=[]
  for url in urls:
   try:
    response=session.get(url,headers=HEADERS,timeout=12,allow_redirects=False)
@@ -125,6 +177,11 @@ def inspect(session,row):
    if pdf:
     attempts.append(url+" PDF nicht für Artikelnummernsuche verwendet")
     continue
+   soup=BeautifulSoup(response.text,"html.parser")
+   heading=" ".join(x.get_text(" ",strip=True) for x in soup.select("h1")[:2])
+   title=(soup.title.get_text(" ",strip=True) if soup.title else "")+" "+heading
+   score=product_page_score(response.url,title,product,model)
+   if score>=12:verified_pages.append((score,response.url))
    records=source_records(response.text,model=model,dimension=dimension,product=product)
    # A family catalogue must not assign its unrelated variant numbers.
    if "catalog.geberit.de" in urlparse(url).hostname.lower() and not re.fullmatch(r"[0-9]{3}\\.[0-9A-Z]{3}\\.[0-9A-Z]{2}\\.[0-9A-Z]",str(model or "")):
@@ -134,6 +191,10 @@ def inspect(session,row):
    hits.extend((code,url) for code,_ in records)
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
  out["Quellen-Diagnose"]=" | ".join(attempts)
+ if verified_pages:
+  out["Produktseiten-URL"]=max(verified_pages)[1]
+  out["Produktseiten-Status"]="Passende Hersteller-Produktseite (automatisch bewertet)"
+ else:out["Produktseiten-Status"]="Nur unbestätigte Links oder Produktfamilie"
  out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
  out["Quellen"]=" | ".join(dict.fromkeys(u for _,u in hits))
  out["Status"]="Kandidaten – manuell prüfen" if hits else "Keine belegte Artikelnummer"
