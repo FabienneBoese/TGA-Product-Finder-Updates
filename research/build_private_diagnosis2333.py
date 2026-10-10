@@ -29,8 +29,11 @@ button_start=s.rfind("   if st.button(",0,bulk_start)
 assert button_start>0
 s=s[:button_start]+controls+s[button_start:]
 
-needle="    st.session_state['bulk_article_results']=_bulk"
-assert needle in s
+import re
+match=re.search(r"(?m)^( +)st\.session_state\['bulk_article_results'\]=_bulk$",s)
+assert match is not None, "Bulk result assignment not found"
+needle=match.group(0)
+upload_indent=match.group(1)
 upload="""    st.session_state['bulk_article_results']=_bulk
     try:
      _diag_path=save_diagnosis(_bulk,__import__('pathlib').Path.home()/'TGA_Product_Finder'/'Diagnose')
@@ -47,6 +50,7 @@ upload="""    st.session_state['bulk_article_results']=_bulk
     except Exception as _diagnosis_error:
      st.warning('Diagnose-Upload/Speicherung: '+str(_diagnosis_error))
 """
+upload='\n'.join(upload_indent+line[4:] if line.startswith('    ') else line for line in upload.split('\n'))
 s=s.replace(needle,upload,1)
 s=s.replace('APP_VERSION = "2.3.32"','APP_VERSION = "2.3.33"',1)
 ast.parse(s)
