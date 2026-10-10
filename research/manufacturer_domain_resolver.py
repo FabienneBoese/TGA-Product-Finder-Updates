@@ -58,17 +58,27 @@ def plausible(maker, url):
     compact = re.sub(r"[^a-z0-9]", "", host.split(".")[0])
     return bool(tokens) and any(t in compact for t in tokens)
 
+def _verified_cached_entry(saved):
+    """Only explicitly verified cached entries may skip a fresh network check."""
+    return (isinstance(saved, dict)
+            and saved.get("verified") is True
+            and bool(saved.get("domain"))
+            and bool(saved.get("homepage"))
+            and domain_name(saved["homepage"]) == saved["domain"])
+
+
 def resolve(session, maker, cache, known_domain=""):
     """Return (domain, homepage, provenance). Cache stores only reviewed or checked entries."""
     key = maker_key(maker)
     if not key:
         return "", "", "Hersteller fehlt"
     saved = cache.get(key, {})
-    if saved.get("domain"):
-        return saved["domain"], saved.get("homepage", ""), saved.get("status", "Cache")
+    if _verified_cached_entry(saved):
+        return saved["domain"], saved["homepage"], saved.get("status", "Verifizierter Cache")
     candidates = search_links(session, maker)
+    known_domain = domain_name(known_domain) if "://" in known_domain else known_domain.lower().removeprefix("www.")
     if known_domain:
-        candidates.append("https://www." + known_domain + "/")
+        candidates.insert(0, "https://www." + known_domain + "/")
     for candidate in candidates:
         if not plausible(maker, candidate) and domain_name(candidate) != known_domain:
             continue
@@ -79,12 +89,11 @@ def resolve(session, maker, cache, known_domain=""):
                 final = domain_name(response.url)
                 if response.status_code != 200 or not response.url.startswith("https://"):
                     continue
-                if final != host and not plausible(maker, response.url) and final != known_domain:
-                    continue
+                # A redirect to a different domain is never proof of manufacturer identity.\n                if final != host and final != known_domain:\n                    continue
                 status = "Website erreichbar; Herstellerzuordnung prüfen"
                 if known_domain and final == known_domain:
                     status = "Bekannte Herstellerdomain; Website erreichbar"
-                cache[key] = {"domain": final, "homepage": response.url, "status": status}
+                cache[key] = {"domain": final, "homepage": response.url, "status": status, "verified": True}
                 return final, response.url, status
             except requests.RequestException:
                 continue
