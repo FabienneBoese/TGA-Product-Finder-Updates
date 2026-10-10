@@ -22,21 +22,21 @@ jobs:
           s=p.read_text(encoding='utf-8')
           assert 'APP_VERSION = "2.3.30"' in s
           original="""     _hits,_err=_tga_bulk_candidates(_maker,_q,_r.get('Typ / Modell',''),_r.get('Dimension',''))
-     _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})"""
-          replacement="""     _model=str(_r.get('Typ / Modell') or '').strip()
-     _dimension=str(_r.get('Dimension') or '').strip()
-     _scope=product_scope(_model,_dimension,str(_r.get('Produktfamilie') or ''))
-     if not _maker:
-      _hits=[];_status='Zurückgestellt – Hersteller fehlt'
-     elif _scope!='Einzelprodukt – Recherche':
-      _hits=[];_status=_scope
-     else:
-      _hits,_err=_tga_bulk_candidates(_maker,_q,_model,_dimension)
-      _distinct=sorted(set(h[0] for h in _hits))
-      _status=('Eindeutiger Kandidat – Herstellerprüfung offen' if len(_distinct)==1
-               else 'Mehrdeutig – keine automatische Zuordnung' if len(_distinct)>1
-               else _err or 'Keine belegte Artikelnummer')
-     _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Typ / Modell':_model,'Dimension':_dimension,'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_status})"""
+               _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})"""
+                    replacement="""     _model=str(_r.get('Typ / Modell') or '').strip()
+               _dimension=str(_r.get('Dimension') or '').strip()
+               _scope=product_scope(_model,_dimension,str(_r.get('Produktfamilie') or ''))
+               if not _maker:
+                _hits=[];_status='Zurückgestellt – Hersteller fehlt'
+               elif _scope!='Einzelprodukt – Recherche':
+                _hits=[];_status=_scope
+               else:
+                _hits,_err=_tga_bulk_candidates(_maker,_q,_model,_dimension)
+                _distinct=sorted(set(h[0] for h in _hits))
+                _status=('Eindeutiger Kandidat – Herstellerprüfung offen' if len(_distinct)==1
+                         else 'Mehrdeutig – keine automatische Zuordnung' if len(_distinct)>1
+                         else _err or 'Keine belegte Artikelnummer')
+               _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Typ / Modell':_model,'Dimension':_dimension,'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_status})"""
           assert original in s,'Bulk integration signature changed'
           s=s.replace(original,replacement,1)
           s=s.replace('APP_VERSION = "2.3.30"','APP_VERSION = "2.3.31"',1)
