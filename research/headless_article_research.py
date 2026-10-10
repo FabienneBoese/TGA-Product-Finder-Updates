@@ -56,7 +56,7 @@ def sitemap_urls(session,domain,model):
   try:
    r=session.get("https://"+domain+"/sitemap.xml",headers=HEADERS,timeout=8)
    if r.status_code==200 and len(r.content)<5_000_000:
-    soup=BeautifulSoup(r.content,"xml")
+    soup=BeautifulSoup(r.content,"html.parser")
     entries=[x.get_text(strip=True) for x in soup.find_all("loc")[:12000]]
     if entries and all(x.endswith(".xml") for x in entries[:min(3,len(entries))]):
      index=entries[:4];entries=[]
@@ -64,7 +64,7 @@ def sitemap_urls(session,domain,model):
       if not same_host(child,domain):continue
       sub=session.get(child,headers=HEADERS,timeout=8)
       if sub.status_code==200 and len(sub.content)<5_000_000:
-       entries.extend(x.get_text(strip=True) for x in BeautifulSoup(sub.content,"xml").find_all("loc")[:12000])
+       entries.extend(x.get_text(strip=True) for x in BeautifulSoup(sub.content,"html.parser").find_all("loc")[:12000])
   except requests.RequestException:pass
   SITEMAP_CACHE[domain]=[u for u in entries if u.startswith("https://") and same_host(u,domain) and not u.endswith(".xml")][:25000]
  return [u for u in SITEMAP_CACHE[domain] if key in re.sub(r"[^a-z0-9]","",urlparse(u).path.casefold())][:3]
