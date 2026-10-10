@@ -46,10 +46,35 @@ def seeded_urls(maker,product,model):
  text=" ".join((str(product or ""),str(model or ""))).casefold()
  return [url for (m,k),url in KNOWN_PRODUCTS.items() if m in str(maker).casefold() and k in text]
 
+SITEMAP_CACHE={}
+def sitemap_urls(session,domain,model):
+ """Bounded official sitemap lookup, shared across products of one manufacturer."""
+ key=re.sub(r"[^a-z0-9]","",str(model or "").casefold())
+ if len(key)<4:return []
+ if domain not in SITEMAP_CACHE:
+  entries=[]
+  try:
+   r=session.get("https://"+domain+"/sitemap.xml",headers=HEADERS,timeout=8)
+   if r.status_code==200 and len(r.content)<5_000_000:
+    soup=BeautifulSoup(r.content,"xml")
+    entries=[x.get_text(strip=True) for x in soup.find_all("loc")[:12000]]
+    if entries and all(x.endswith(".xml") for x in entries[:min(3,len(entries))]):
+     index=entries[:4];entries=[]
+     for child in index:
+      if not same_host(child,domain):continue
+      sub=session.get(child,headers=HEADERS,timeout=8)
+      if sub.status_code==200 and len(sub.content)<5_000_000:
+       entries.extend(x.get_text(strip=True) for x in BeautifulSoup(sub.content,"xml").find_all("loc")[:12000])
+  except requests.RequestException:pass
+  SITEMAP_CACHE[domain]=[u for u in entries if u.startswith("https://") and same_host(u,domain) and not u.endswith(".xml")][:25000]
+ return [u for u in SITEMAP_CACHE[domain] if key in re.sub(r"[^a-z0-9]","",urlparse(u).path.casefold())][:3]
+
 DISABLED_SEARCH_PROVIDERS=set()
 def discover(session,domain,product,model,maker=""):
  from urllib.parse import parse_qs,unquote
  urls=seeded_urls(maker,product,model)
+ for candidate in sitemap_urls(session,domain,model):
+  if candidate not in urls:urls.append(candidate)
  notes=[]
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
