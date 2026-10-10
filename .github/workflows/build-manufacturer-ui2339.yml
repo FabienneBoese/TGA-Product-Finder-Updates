@@ -1,0 +1,45 @@
+name: Release manufacturer-only site checks v2.3.39
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer-ui2339.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          mkdir -p /tmp/tga2339
+          unzip -q TGA_Product_Finder_Update_v2.3.38.zip -d /tmp/tga2339
+          python3 research/build_manufacturer_ui2339.py
+          TGA_DATA_DIR=/tmp/tga2339_data python3 - <<'PY'
+          import os,ast,requests
+          from pathlib import Path
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2339')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          source=Path('app.py').read_text(encoding='utf-8')
+          tree=ast.parse(source)
+          assert source.count('Herstellerwebsites automatisch finden und prüfen')==1
+          assert 'Produktseiten-URL' not in source[source.index('# Manufacturer website search v2.3.39'):]
+          print('PASS app startup and phase 1 UI')
+          PY
+          (cd /tmp/tga2339 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.39.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.39.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.39','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.39.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.39.zip update_manifest.json
+          git commit -m 'Release manufacturer-only website search v2.3.39'
+          git pull --rebase origin main
+          git push origin HEAD:main
