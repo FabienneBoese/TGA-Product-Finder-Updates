@@ -48,7 +48,7 @@ def sitemap_urls(session,domain,model,product=""):
     soup=BeautifulSoup(r.content,"html.parser")
     entries=[x.get_text(strip=True) for x in soup.find_all("loc")[:12000]]
     if entries and all(x.endswith(".xml") for x in entries[:min(3,len(entries))]):
-     index=entries[:4];entries=[]
+     index=sorted(entries,key=lambda u: (not any(word in u.casefold() for word in ('product','produkt','catalog','katalog')),u))[:10];entries=[]
      for child in index:
       if not same_host(child,domain):continue
       sub=session.get(child,headers=HEADERS,timeout=8)
