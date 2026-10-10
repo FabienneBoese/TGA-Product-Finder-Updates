@@ -37,7 +37,7 @@ def seeded_urls(maker,product,model):
 SITEMAP_CACHE={}
 def sitemap_urls(session,domain,model,product=""):
  """Bounded official sitemap lookup, shared across products of one manufacturer."""
- terms=[re.sub(r"[^a-z0-9]","",t.casefold()) for t in re.findall(r"[\\w-]{3,}",str(model or "")+" "+str(product or ""))]
+ terms=[re.sub(r"[^a-z0-9]","",t.casefold()) for t in re.findall(r"[a-zA-Z0-9_-]{3,}",str(model or "")+" "+str(product or ""))]
  terms=[t for t in terms if len(t)>=4 and t not in {"element","ventilator","produkt","pumpe","gehaeuse","gehaüse","duofix","gebe"}]
  if not terms:return []
  if domain not in SITEMAP_CACHE:
