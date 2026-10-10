@@ -70,6 +70,20 @@ ui=ui.replace('''if status.startswith("Erreichbar"):return (found,status)''','''
 ui=ui.replace('''                st.write("Automatisch erreichbare Websites:",int(_site_df["Status"].astype(str).str.startswith("Erreichbar").sum()),"von",len(_site_df))''','''                st.write("Automatisch erreichbare Websites:",int(_site_df["Status"].astype(str).str.startswith(("Erreichbar","Browserzugriff")).sum()),"von",len(_site_df))''')
 ui=ui.replace('''st.caption("HTTP 403/429: Die Adresse ist bekannt, der automatische Zugriff ist blockiert. Bitte im Browser prüfen.")''','''st.caption("Bei HTTP 403/429 versucht das Programm automatisch einen echten Browserzugriff. Auch Browser können vom Hersteller blockiert werden.")''')
 ui=ui.replace('# Manufacturer website search v2.3.40','# Manufacturer website search v2.3.41')
+ui=ui.replace('    try:\n        _site_conn=db()', '''    if st.button("Browserkomponente installieren",key="tga_browser_setup_241"):
+        import subprocess as _site_subprocess
+        import sys as _site_sys
+        with st.spinner("Installiere Browserkomponente"):
+            try:
+                a=_site_subprocess.run([_site_sys.executable,"-m","pip","install","playwright"],capture_output=True,text=True,timeout=180)
+                if a.returncode:st.error(a.stderr[-700:])
+                else:
+                    b=_site_subprocess.run([_site_sys.executable,"-m","playwright","install","chromium"],capture_output=True,text=True,timeout=240)
+                    if b.returncode:st.error(b.stderr[-700:])
+                    else:st.success("Browserkomponente installiert")
+            except Exception as exc:st.error(str(exc))
+    try:
+        _site_conn=db()''')
 s=prefix+ui
 ast.parse(s)
 p.write_text(s,encoding='utf-8')
