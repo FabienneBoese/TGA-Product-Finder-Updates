@@ -86,7 +86,7 @@ def product_page_score(url,title,product,model):
  product_matches=sum(len(t) for t in product_tokens if t in path_flat or t in title_flat)
  if model_tokens and not model_matches:return 0
  code=re.sub("[^a-z0-9]","",str(model or "").casefold())
- if len(code)>=4 and any(ch.isdigit() for ch in code) and code not in path_flat and code not in title_flat:return 0
+ if len(code)>=4 and any(ch.isdigit() for ch in code) and code not in path_flat and code not in title_flat and chr(47) not in str(model or ""):return 0
  distinctive=[t for t in model_tokens if len(t)>=4 and not t.isdigit()]
  if distinctive and not any(t in path_flat or t in title_flat for t in distinctive):return 0
  if not model_tokens and not product_matches:return 0
