@@ -81,9 +81,9 @@ def inspect(session,row):
     continue
    records=source_records(response.text,model=model,dimension=dimension,product=product)
    # A family catalogue must not assign its unrelated variant numbers.
-   if "catalog.geberit.de" in urlparse(url).hostname.lower() and not model:
+   if "catalog.geberit.de" in urlparse(url).hostname.lower() and not re.fullmatch(r"[0-9]{3}\\.[0-9A-Z]{3}\\.[0-9A-Z]{2}\\.[0-9A-Z]",str(model or "")):
     records=[]
-    attempts.append(url+" Produktfamilie: Variantenauswahl erforderlich")
+    attempts.append(url+" Produktfamilie: Variantenauswahl erforderlich; keine Einzelartikel-Übernahme")
    attempts.append(url+(" Kandidaten: "+str(len(records)) if records else " keine belegte Artikelnummer"))
    hits.extend((code,url) for code,_ in records)
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
