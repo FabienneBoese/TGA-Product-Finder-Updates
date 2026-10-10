@@ -1,7 +1,7 @@
 name: Build diagnosis UI fix 2334
 on:
   push:
-    paths: ['.github/workflows/build-private-diagnosis2334.yml']
+    paths: ['.github/workflows/build-diagnosis-ui2334.yml']
 permissions:
   contents: write
 jobs:
