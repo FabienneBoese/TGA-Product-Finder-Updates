@@ -25,12 +25,20 @@ def classify(session, row, domain_info=None):
     result["Herstellerseiten-Kandidaten"] = " | ".join(urls)
     result["Suchdiagnose"] = diagnosis
     scored = []
+    blocked = []
+    redirected = []
     for url in urls:
         if not url.startswith("https://") or not same_host(url, domain):
             continue
         try:
             response = session.get(url, headers=HEADERS, timeout=12, allow_redirects=True)
-            if response.status_code != 200 or not same_host(response.url, domain):
+            if response.status_code in (403, 429):
+                blocked.append(f"{url} HTTP {response.status_code}")
+                continue
+            if not same_host(response.url, domain):
+                redirected.append(f"{url} -> {response.url}")
+                continue
+            if response.status_code != 200:
                 continue
             if "pdf" in response.headers.get("Content-Type", "").lower():
                 continue
@@ -42,10 +50,16 @@ def classify(session, row, domain_info=None):
                 scored.append((score, response.url))
         except requests.RequestException:
             continue
+    if blocked or redirected:
+        result["Suchdiagnose"] = " | ".join(filter(None, [diagnosis, *blocked, *redirected]))
     if scored:
         scored.sort(reverse=True)
         result["Produktseiten-URL"] = scored[0][1]
         result["Suchstatus"] = "Produktseiten-Kandidat (Prüfung erforderlich)"
+    elif blocked:
+        result["Suchstatus"] = "Produktseite nicht prüfbar – Zugriff gesperrt (HTTP 403/429)"
+    elif redirected:
+        result["Suchstatus"] = "Weiterleitung auf Fremddomain – manuell prüfen"
     elif urls:
         result["Suchstatus"] = "Herstellerlinks gefunden, Produktseite unbestätigt"
     else:

@@ -16,6 +16,27 @@ EXCLUDE = ("wikipedia.org", "amazon.", "ebay.", "idealo.", "linkedin.", "faceboo
 COMMON = {"gmbh", "ag", "kg", "co", "deutschland", "gruppe", "group", "technik",
           "sanitaer", "sanitär", "heizung", "und", "the", "company", "hersteller"}
 
+# Reviewed manufacturer-owned domain transitions from live audit (2026-10-10).
+# This registry applies to every product search using this resolver.
+KNOWN_MANUFACTURER_DOMAINS = {"schedel": "schedel-badinnovation.de", "wittigsthal": "wittigsthal.de", "wittingsthal": "wittigsthal.de", "duravit": "duravit.com"}
+
+OFFICIAL_REDIRECTS = {
+    "grohe.de": {"grohe.com"},
+    "clage.de": {"clage.com"},
+    "hewi.de": {"hewi.com"},
+    "imi-hydronic.com": {"imiplc.com"},
+    "alape.com": {"laufen.com"},
+    "duravit.de": {"duravit.com"},
+}
+
+def allowed_redirect(source, target):
+    """Only same-domain and explicitly reviewed cross-domain redirects are trusted."""
+    source, target = source.lower(), target.lower()
+    if source == target or target.endswith("." + source):
+        return True
+    return any(target == dest or target.endswith("." + dest)
+               for dest in OFFICIAL_REDIRECTS.get(source, set()))
+
 def maker_key(maker):
     return " ".join(str(maker or "").casefold().strip().split())
 
@@ -58,17 +79,29 @@ def plausible(maker, url):
     compact = re.sub(r"[^a-z0-9]", "", host.split(".")[0])
     return bool(tokens) and any(t in compact for t in tokens)
 
+def _verified_cached_entry(saved):
+    """Only explicitly verified cached entries may skip a fresh network check."""
+    return (isinstance(saved, dict)
+            and saved.get("verified") is True
+            and bool(saved.get("domain"))
+            and bool(saved.get("homepage"))
+            and domain_name(saved["homepage"]) == saved["domain"])
+
+
 def resolve(session, maker, cache, known_domain=""):
     """Return (domain, homepage, provenance). Cache stores only reviewed or checked entries."""
     key = maker_key(maker)
     if not key:
         return "", "", "Hersteller fehlt"
     saved = cache.get(key, {})
-    if saved.get("domain"):
-        return saved["domain"], saved.get("homepage", ""), saved.get("status", "Cache")
-    candidates = search_links(session, maker)
-    if known_domain:
-        candidates.append("https://www." + known_domain + "/")
+    if _verified_cached_entry(saved):
+        return saved["domain"], saved["homepage"], saved.get("status", "Verifizierter Cache")
+    known_domain = domain_name(known_domain) if "://" in known_domain else known_domain.lower().removeprefix("www.")
+    known_domain = KNOWN_MANUFACTURER_DOMAINS.get(key, known_domain)
+    candidates = (["https://www." + known_domain + "/"] if known_domain else [])
+    candidates.extend(search_links(session, maker))
+    # A direct official product or document URL can succeed when the homepage fails.
+    # This resolver checks homepages only; callers must retain blocked/unknown status.
     for candidate in candidates:
         if not plausible(maker, candidate) and domain_name(candidate) != known_domain:
             continue
@@ -79,12 +112,14 @@ def resolve(session, maker, cache, known_domain=""):
                 final = domain_name(response.url)
                 if response.status_code != 200 or not response.url.startswith("https://"):
                     continue
-                if final != host and not plausible(maker, response.url) and final != known_domain:
+                # A redirect to a different domain is never proof of manufacturer identity.
+                if not allowed_redirect(host, final):
                     continue
                 status = "Website erreichbar; Herstellerzuordnung prüfen"
-                if known_domain and final == known_domain:
+                reviewed = bool(known_domain and (final == known_domain or allowed_redirect(known_domain, final)))
+                if reviewed:
                     status = "Bekannte Herstellerdomain; Website erreichbar"
-                cache[key] = {"domain": final, "homepage": response.url, "status": status}
+                cache[key] = {"domain": final, "homepage": response.url, "status": status, "verified": reviewed, "source_domain": host}
                 return final, response.url, status
             except requests.RequestException:
                 continue

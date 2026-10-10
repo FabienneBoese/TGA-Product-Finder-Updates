@@ -33,5 +33,20 @@ class ManufacturerFinderTests(unittest.TestCase):
         self.assertEqual(result["Produktseiten-URL"], "")
         self.assertIn("unbestätigt", result["Suchstatus"])
 
+    @patch("manufacturer_page_finder.discover")
+    def test_http_403_is_blocked_not_missing(self, discover):
+        url = "https://www.heliosventilatoren.de/de/produkte/sb-125-a"
+        discover.return_value = ([url], "")
+        class Blocked:
+            def get(self, url, **kwargs):
+                class Response:
+                    status_code = 403
+                    url = "https://www.heliosventilatoren.de/de/produkte/sb-125-a"
+                return Response()
+        result = classify(Blocked(), {"Hersteller": "Helios", "Produkt": "Ventilatorbox", "Typ / Modell": "SB 125 A"})
+        self.assertIn("Zugriff gesperrt", result["Suchstatus"])
+        self.assertIn("HTTP 403", result["Suchdiagnose"])
+        self.assertEqual(result["Produktseiten-URL"], "")
+
 if __name__ == "__main__":
     unittest.main()

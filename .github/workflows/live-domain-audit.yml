@@ -1,0 +1,50 @@
+name: Live manufacturer domain audit
+on:
+  push:
+    paths:
+      - '.github/workflows/live-domain-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install -q requests beautifulsoup4
+      - name: Test official domains over real network
+        run: |
+          python - <<'PY'
+          import concurrent.futures,json,requests
+          from urllib.parse import urlparse
+          from pathlib import Path
+          from research.headless_article_research import DOMAINS
+          names={v:k for k,v in DOMAINS.items()}
+          names.update({'villeroy-boch.de':'Villeroy & Boch','duravit.de':'Duravit','alape.com':'Alape'})
+          def check(item):
+              domain,maker=item
+              tries=[]
+              for prefix in ('https://www.','https://'):
+                  url=prefix+domain+'/'
+                  try:
+                      r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=12,allow_redirects=True)
+                      final=urlparse(r.url).hostname or ''
+                      tries.append({'url':url,'status':r.status_code,'final':r.url})
+                      if r.status_code==200:
+                          return {'manufacturer':maker,'domain':domain,'result':'HTTP 200','final':r.url,'same_domain':final==domain or final.endswith('.'+domain),'attempts':tries}
+                  except requests.RequestException as e:
+                      tries.append({'url':url,'error':type(e).__name__})
+              return {'manufacturer':maker,'domain':domain,'result':'not confirmed','attempts':tries}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+              results=list(pool.map(check,names.items()))
+          Path('manufacturer_domain_audit.json').write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding='utf-8')
+          print(json.dumps(results,indent=2,ensure_ascii=False))
+          print('HTTP 200:',sum(x['result']=='HTTP 200' for x in results),'/',len(results))
+          PY
+        env:
+          PYTHONPATH: research
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manufacturer-domain-audit
+          path: manufacturer_domain_audit.json
