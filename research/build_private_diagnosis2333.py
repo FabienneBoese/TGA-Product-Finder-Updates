@@ -13,12 +13,12 @@ s=module+"\n"+s
 # Controls live next to the article-research action, not in a global configuration panel.
 anchor="    _bulk=[]"
 assert anchor in s, "Bulk research block changed; refusing unsafe patch"
-controls="""    st.markdown('##### Diagnoseberichte')
-    _upload_enabled=st.checkbox('Diagnose-CSV nach der Recherche automatisch in das private GitHub-Repository hochladen',value=False,key='tga_private_diagnosis_enabled')
-    _upload_token=''
-    if _upload_enabled:
-     _upload_token=st.text_input('GitHub-Zugriffstoken (nur für das private Diagnose-Repository)',type='password',key='tga_private_diagnosis_token',help='Fine-grained GitHub token: Repository TGA-Product-Finder-Diagnose, Contents: Read and write. Der Token wird nicht in CSV oder Programmdateien gespeichert.')
-     st.caption('Die Diagnose enthält Projekt- und Produktdaten. Übertragung ausschließlich nach Aktivierung dieser Option.')
+controls="""   st.markdown('##### Diagnoseberichte')
+   _upload_enabled=st.checkbox('Diagnose-CSV nach der Recherche automatisch in das private GitHub-Repository hochladen',value=False,key='tga_private_diagnosis_enabled')
+   _upload_token=''
+   if _upload_enabled:
+    _upload_token=st.text_input('GitHub-Zugriffstoken (nur für das private Diagnose-Repository)',type='password',key='tga_private_diagnosis_token',help='Fine-grained GitHub token: Repository TGA-Product-Finder-Diagnose, Contents: Read and write. Der Token wird nicht in CSV oder Programmdateien gespeichert.')
+    st.caption('Die Diagnose enthält Projekt- und Produktdaten. Übertragung ausschließlich nach Aktivierung dieser Option.')
 """
 # Add controls immediately before research starts, outside the button scope.
 button_anchor="   if st.button('"
