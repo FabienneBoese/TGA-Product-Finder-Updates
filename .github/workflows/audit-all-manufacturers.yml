@@ -1,0 +1,53 @@
+name: Audit all project manufacturer homepages
+on:
+  push:
+    paths: ['.github/workflows/audit-all-manufacturers.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install -q requests
+      - shell: bash
+        run: |
+          python3 - <<'PY'
+          import requests,json,concurrent.futures
+          sites={
+          "Helios":["heliosventilatoren.de"],"TROX":["trox.de"],"LUNOS":["lunos.de"],"Danfoss":["danfoss.com"],
+          "Reflex":["reflex-winkelmann.com"],"WIKA":["wika.com"],"Viega":["viega.de"],
+          "IMI Heimeier":["imi-hydronic.com"],"ROCKWOOL":["rockwool.com"],"Kermi":["kermi.com"],
+          "Ostendorf":["ostendorf-kunststoffe.com"],"Jung Pumpen":["jung-pumpen.de"],
+          "Kemper":["kemper-group.com","kemper-group.de"],"Geberit":["geberit.de"],
+          "Villeroy & Boch":["villeroy-boch.de","villeroy-boch.com"],"Newo":["newo.de"],
+          "Duravit":["duravit.de"],"Herzbach":["herzbach.com"],"emco":["emco-bath.com"],
+          "Schedel":["schedel-bad.de"],"LAUFEN":["laufen.com"],"Hewi":["hewi.de"],
+          "Alape":["alape.com"],"Witingsthal":["wittingsthal.de"],"CLAGE":["clage.de"]}
+          def check(item):
+              maker,domains=item
+              attempts=[]
+              with requests.Session() as s:
+                  s.headers['User-Agent']='Mozilla/5.0'
+                  for domain in domains:
+                      for base in ('https://www.','https://'):
+                          url=base+domain+'/'
+                          try:
+                              r=s.get(url,timeout=8,allow_redirects=True)
+                              attempts.append([url,r.status_code,r.url])
+                              if r.status_code<400 and len(r.content)>100:
+                                  return maker,{'url':r.url,'status':r.status_code,'attempts':attempts}
+                          except requests.RequestException as e:attempts.append([url,str(e)[:100]])
+              return maker,{'url':'','attempts':attempts}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+              results=dict(pool.map(check,sites.items()))
+          print('LIVE RESULTS',json.dumps(results,ensure_ascii=False,indent=2))
+          from pathlib import Path
+          Path('all_manufacturers_live.json').write_text(json.dumps(results,ensure_ascii=False,indent=2))
+          print('REACHABLE',sum(bool(x['url']) for x in results.values()),'/',len(results))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: all-manufacturers-live
+          path: all_manufacturers_live.json
