@@ -4,6 +4,8 @@ on:
     paths:
       - 'research/test_headless_article_research.py'
       - 'research/headless_article_research.py'
+      - 'research/manufacturer_domain_resolver.py'
+      - 'research/test_manufacturer_domain_resolver.py'
       - 'research/manufacturer_page_finder.py'
       - 'research/test_manufacturer_page_finder.py'
       - '.github/workflows/test-article-research.yml'
