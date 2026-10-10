@@ -18,6 +18,7 @@ class ArticleSourceTests(unittest.TestCase):
   self.assertEqual(documented_candidates("emco","emco art 1675 001 00 chrom","")[0][0],"1675 001 00")
   self.assertEqual(documented_candidates("Jung Pumpen","Jung Pumpen U3K","U3K")[0][0],"JP50002")
   self.assertEqual(documented_candidates("Jung Pumpen","U5K","U5K"),[])
+  self.assertEqual({c for c,u in documented_candidates("Danfoss","Fernwärmeübergabestation","ECL COMFORT 310")},{"087H3040","087H3044"})
  def test_no_model_as_article(self):
   html="<h1>PA 10</h1><p>Artikeltype: PA 10</p>"
   self.assertEqual(source_records(html,model="PA 10"),[])
