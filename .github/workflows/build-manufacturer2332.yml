@@ -1,0 +1,85 @@
+name: Build manufacturer research 2332
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer2332.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_*article*py' -v
+          mkdir -p /tmp/tga2332
+          unzip -q TGA_Product_Finder_Update_v2.3.31.zip -d /tmp/tga2332
+          python3 - <<'PY'
+          import ast,json
+          from pathlib import Path
+          p=Path('/tmp/tga2332/app.py')
+          s=p.read_text(encoding='utf-8')
+          assert 'APP_VERSION = "2.3.31"' in s
+          engine=Path('research/manufacturer_article_engine.py').read_text(encoding='utf-8')
+          s=engine+chr(10)+s
+          # Replace the existing bulk research function, keeping its interface.
+          begin=s.index("def _tga_bulk_candidates(maker, query, model='', dimension=''):")
+          end=s.index(chr(10)+"def ",begin+5)
+          fn="""def _tga_bulk_candidates(maker, query, model='', dimension=''):
+              domain=_tga_maker_domain(maker) or _tga_extra_domains(maker)
+              if not domain:return [],'Herstellerdomain unbekannt'
+              session=requests.Session()
+              phrase=" ".join(str(x or '') for x in (maker,query,model,dimension))
+              urls=_tga_discover_urls(session,phrase,domain)
+              hits=[];visited=[]
+              for url in urls[:10]:
+                  try:
+                      r=session.get(url,headers=_HEADERS,timeout=12,allow_redirects=False)
+                      if r.status_code!=200 or not same_host(r.url,domain):continue
+                      is_pdf='pdf' in r.headers.get('Content-Type','').lower() or r.url.lower().split('?')[0].endswith('.pdf')
+                      txt=_tga_source_text(r) if is_pdf else r.text
+                      if not txt:continue
+                      visited.append(url)
+                      records=pdf_records(txt,model,dimension) if is_pdf else source_records(txt,model,dimension,query)
+                      for code,evidence in records:
+                          if (code,url) not in hits:hits.append((code,url))
+                  except requests.RequestException:
+                      continue
+              return hits[:30],(None if hits else 'Quellen ohne belegte Artikelnummer' if visited else 'Keine abrufbaren Herstellerquellen')
+          """
+          import textwrap
+          fn=textwrap.dedent(fn)
+          s=s[:begin]+fn+s[end:]
+          # Do not discard records simply because the Typ / Modell cell is empty.
+          s=s.replace("elif _scope!='Einzelprodukt – Recherche':","elif False and _scope!='Einzelprodukt – Recherche':",1)
+          # Explicitly mark multiple possible article numbers in the results.
+          s=s.replace("'Mehrdeutig – keine automatische Zuordnung'","'Mehrere mögliche Artikelnummern – Auswahl erforderlich'",1)
+          s=s.replace('APP_VERSION = "2.3.31"','APP_VERSION = "2.3.32"',1)
+          ast.parse(s)
+          p.write_text(s,encoding='utf-8')
+          v=Path('/tmp/tga2332/version.json')
+          d=json.loads(v.read_text());d['version']='2.3.32';v.write_text(json.dumps(d))
+          print('PASS article research integrated')
+          PY
+          TGA_DATA_DIR=/tmp/tga2332_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2332')
+          a=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not a.exception,a.exception
+          print('PASS Streamlit startup')
+          PY
+          (cd /tmp/tga2332 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.32.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.32.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.32','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.32.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.32.zip update_manifest.json
+          git commit -m 'Release manufacturer article source matching 2.3.32'
+          git pull --rebase origin main
+          git push origin HEAD:main
