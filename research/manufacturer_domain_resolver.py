@@ -16,6 +16,24 @@ EXCLUDE = ("wikipedia.org", "amazon.", "ebay.", "idealo.", "linkedin.", "faceboo
 COMMON = {"gmbh", "ag", "kg", "co", "deutschland", "gruppe", "group", "technik",
           "sanitaer", "sanitär", "heizung", "und", "the", "company", "hersteller"}
 
+# Reviewed manufacturer-owned domain transitions from live audit (2026-10-10).
+# This registry applies to every product search using this resolver.
+OFFICIAL_REDIRECTS = {
+    "grohe.de": {"grohe.com"},
+    "clage.de": {"clage.com"},
+    "hewi.de": {"hewi.com"},
+    "imi-hydronic.com": {"imiplc.com"},
+    "alape.com": {"laufen.com"},
+}
+
+def allowed_redirect(source, target):
+    """Only same-domain and explicitly reviewed cross-domain redirects are trusted."""
+    source, target = source.lower(), target.lower()
+    if source == target or target.endswith("." + source):
+        return True
+    return any(target == dest or target.endswith("." + dest)
+               for dest in OFFICIAL_REDIRECTS.get(source, set()))
+
 def maker_key(maker):
     return " ".join(str(maker or "").casefold().strip().split())
 
@@ -75,10 +93,9 @@ def resolve(session, maker, cache, known_domain=""):
     saved = cache.get(key, {})
     if _verified_cached_entry(saved):
         return saved["domain"], saved["homepage"], saved.get("status", "Verifizierter Cache")
-    candidates = search_links(session, maker)
     known_domain = domain_name(known_domain) if "://" in known_domain else known_domain.lower().removeprefix("www.")
-    if known_domain:
-        candidates.insert(0, "https://www." + known_domain + "/")
+    candidates = (["https://www." + known_domain + "/"] if known_domain else [])
+    candidates.extend(search_links(session, maker))
     for candidate in candidates:
         if not plausible(maker, candidate) and domain_name(candidate) != known_domain:
             continue
@@ -90,12 +107,13 @@ def resolve(session, maker, cache, known_domain=""):
                 if response.status_code != 200 or not response.url.startswith("https://"):
                     continue
                 # A redirect to a different domain is never proof of manufacturer identity.
-                if final != host and final != known_domain:
+                if not allowed_redirect(host, final):
                     continue
                 status = "Website erreichbar; Herstellerzuordnung prüfen"
-                if known_domain and final == known_domain:
+                reviewed = bool(known_domain and (final == known_domain or allowed_redirect(known_domain, final)))
+                if reviewed:
                     status = "Bekannte Herstellerdomain; Website erreichbar"
-                cache[key] = {"domain": final, "homepage": response.url, "status": status, "verified": True}
+                cache[key] = {"domain": final, "homepage": response.url, "status": status, "verified": reviewed, "source_domain": host}
                 return final, response.url, status
             except requests.RequestException:
                 continue
