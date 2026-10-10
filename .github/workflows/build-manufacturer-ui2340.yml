@@ -1,0 +1,62 @@
+name: Test and publish improved manufacturer websites v2.3.40
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer-ui2340.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          mkdir -p /tmp/tga2340
+          unzip -q TGA_Product_Finder_Update_v2.3.39.zip -d /tmp/tga2340
+          python3 research/build_manufacturer_ui2340.py
+          TGA_DATA_DIR=/tmp/tga2340_data python3 - <<'PY'
+          import os,ast,requests,re
+          from pathlib import Path
+          from urllib.parse import urlparse,parse_qs,unquote
+          from bs4 import BeautifulSoup
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2340')
+          app=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not app.exception,app.exception
+          src=Path('app.py').read_text(encoding='utf-8')
+          tree=ast.parse(src)
+          names=('_site_host','_site_check','_site_find')
+          funcs={n.name:n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name in names}
+          mapping=next(n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_site_official' for t in n.targets))
+          ns={'_site_requests':requests,'_site_re':re,'_site_parse':urlparse,'_site_qs':parse_qs,'_site_unquote':unquote,'_site_soup':BeautifulSoup,'_site_official':ast.literal_eval(mapping)}
+          exec(compile(ast.Module(body=list(funcs.values()),type_ignores=[]),'manufacturer_lookup','exec'),ns)
+          makers=('TROX','Helios','Geberit','Schedel','Witingsthal','emco','WIKA','Duravit','Villeroy & Boch')
+          results={}
+          with requests.Session() as session:
+              for maker in makers:
+                  try:results[maker]=ns['_site_find'](session,maker)
+                  except Exception as e:results[maker]=['',str(e)]
+          print('LIVE_RESULTS:',results)
+          confirmed=sum(status.startswith('Erreichbar') for url,status in results.values())
+          print('CONFIRMED_HTTP_REACHABLE:',confirmed,'/',len(makers))
+          assert confirmed>=5,'Live check below threshold'
+          assert results['Schedel'][0] and 'schedel-badinnovation.de' in results['Schedel'][0]
+          assert results['Witingsthal'][0] and 'wittigsthal.de' in results['Witingsthal'][0]
+          assert results['WIKA'][1]!='Nicht erreichbar / nicht bestätigt' or not results['WIKA'][0]
+          PY
+          (cd /tmp/tga2340 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.40.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.40.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.40','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.40.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.40.zip update_manifest.json
+          git commit -m 'Publish corrected manufacturer website lookup v2.3.40'
+          git pull --rebase origin main
+          git push origin HEAD:main
