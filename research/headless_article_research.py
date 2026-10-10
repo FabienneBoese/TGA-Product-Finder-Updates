@@ -87,7 +87,14 @@ def inspect(session,row):
  urls,err=discover(session,domain,product,model,maker)
  out["Gefundene URLs"]=" | ".join(urls)
  out["Suchdienst-Diagnose"]=err
- if not urls:out["Status"]="Keine Hersteller-URLs: "+err;return out
+ if not urls:
+  docs=documented_candidates(maker,product,model)
+  if docs:
+   out["Artikelnummern-Kandidaten"]=", ".join(c for c,u in docs)
+   out["Quellen"]=" | ".join(u for c,u in docs)
+   out["Status"]="Kandidaten aus Herstellerdokumenten – Variante prüfen"
+  else:out["Status"]="Keine Hersteller-URLs: "+err
+  return out
  attempts=[];hits=[]
  for url in urls:
   try:
