@@ -1,0 +1,70 @@
+name: Live-test and publish reachable manufacturer sites v2.3.38
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer-ui2338.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          mkdir -p /tmp/tga2338
+          unzip -q TGA_Product_Finder_Update_v2.3.37.zip -d /tmp/tga2338
+          python3 research/build_manufacturer_ui2338.py
+          python3 - <<'PY'
+          import ast,requests,re,json
+          from pathlib import Path
+          from urllib.parse import urlparse,parse_qs,unquote
+          from bs4 import BeautifulSoup
+          s=Path('/tmp/tga2338/app.py').read_text(encoding='utf-8')
+          module=ast.parse(s)
+          funcs={n.name:n for n in ast.walk(module) if isinstance(n,ast.FunctionDef) and n.name in ('_tga_discover','_tga_host','_tga_tokens')}
+          assert len(funcs)==3,funcs.keys()
+          ns={'_tga_requests':requests,'_tga_re':re,'_tga_urlparse':urlparse,'_tga_qs':parse_qs,'_tga_unquote':unquote,'_tga_Soup':BeautifulSoup,'_tga_headers':{'User-Agent':'Mozilla/5.0'}}
+          exec(compile(ast.Module(body=list(funcs.values()),type_ignores=[]),'app_search','exec'),ns)
+          results={}
+          with requests.Session() as session:
+              for maker in ('TROX','Helios','Geberit','GROHE','ROCKWOOL'):
+                  try:
+                      website,page,status,searchstatus=ns['_tga_discover'](session,maker,'','')
+                      results[maker]={'website':website,'status':status}
+                  except Exception as e:
+                      results[maker]={'error':str(e)}
+          print('LIVE WEBSITE RESULTS:',json.dumps(results,ensure_ascii=False,indent=2))
+          Path('manufacturer_live_results_238.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+          confirmed=sum(bool(r.get('website')) for r in results.values())
+          print('CONFIRMED REACHABLE:',confirmed,'of',len(results))
+          assert confirmed>=3,'Not enough reachable manufacturer websites: '+str(confirmed)
+          PY
+          TGA_DATA_DIR=/tmp/tga2338_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2338')
+          at=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not at.exception,at.exception
+          print('PASS: Streamlit app starts')
+          PY
+          (cd /tmp/tga2338 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.38.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.38.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.38','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.38.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.38.zip update_manifest.json
+          git commit -m 'Release live-tested reachable manufacturer website search v2.3.38'
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manufacturer-live-results-v238
+          path: manufacturer_live_results_238.json
