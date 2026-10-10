@@ -1,0 +1,40 @@
+name: Build diagnosis UI fix 2335
+on:
+  push:
+    paths: ['.github/workflows/build-source-diagnosis2335.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          echo 'Validate exact diagnosis checkbox assignment'
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_private_diagnosis_upload.py' -v
+          mkdir -p /tmp/tga2335
+          unzip -q TGA_Product_Finder_Update_v2.3.34.zip -d /tmp/tga2335
+          python3 research/build_source_diagnosis2335.py
+          TGA_DATA_DIR=/tmp/tga2335_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2335')
+          app=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not app.exception,app.exception
+          print('PASS Streamlit startup')
+          PY
+          (cd /tmp/tga2335 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.35.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.35.zip')
+          Path('update_manifest.json').write_text(json.dumps({'version':'2.3.35','download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.35.zip','sha256':hashlib.sha256(p.read_bytes()).hexdigest()},indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.35.zip update_manifest.json
+          git commit -m 'Release opt-in private diagnosis export v2.3.35'
+          git pull --rebase origin main
+          git push origin HEAD:main
