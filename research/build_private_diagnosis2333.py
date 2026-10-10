@@ -31,21 +31,21 @@ s=s[:button_start]+controls+s[button_start:]
 
 needle="     st.session_state['bulk_article_results']=_bulk"
 assert needle in s
-upload="""    st.session_state['bulk_article_results']=_bulk
-    try:
-     _diag_path=save_diagnosis(_bulk,__import__('pathlib').Path.home()/'TGA_Product_Finder'/'Diagnose')
-     st.session_state['tga_last_diagnosis_path']=str(_diag_path)
-     if st.session_state.get('tga_private_diagnosis_enabled'):
-      _token=st.session_state.get('tga_private_diagnosis_token','')
-      if _token:
-       _uploaded=upload_diagnosis(_diag_path,_token)
-       st.success('Diagnose-CSV privat übertragen: '+_uploaded)
+upload="""     st.session_state['bulk_article_results']=_bulk
+     try:
+      _diag_path=save_diagnosis(_bulk,__import__('pathlib').Path.home()/'TGA_Product_Finder'/'Diagnose')
+      st.session_state['tga_last_diagnosis_path']=str(_diag_path)
+      if st.session_state.get('tga_private_diagnosis_enabled'):
+       _token=st.session_state.get('tga_private_diagnosis_token','')
+       if _token:
+        _uploaded=upload_diagnosis(_diag_path,_token)
+        st.success('Diagnose-CSV privat übertragen: '+_uploaded)
+       else:
+        st.warning('CSV lokal gespeichert. Für den privaten Upload fehlt das GitHub-Zugriffstoken.')
       else:
-       st.warning('CSV lokal gespeichert. Für den privaten Upload fehlt das GitHub-Zugriffstoken.')
-     else:
-      st.info('Diagnose-CSV lokal gespeichert: '+str(_diag_path))
-    except Exception as _diagnosis_error:
-     st.warning('Diagnose-Upload/Speicherung: '+str(_diagnosis_error))
+       st.info('Diagnose-CSV lokal gespeichert: '+str(_diag_path))
+     except Exception as _diagnosis_error:
+      st.warning('Diagnose-Upload/Speicherung: '+str(_diagnosis_error))
 """
 s=s.replace(needle,upload,1)
 s=s.replace('APP_VERSION = "2.3.32"','APP_VERSION = "2.3.33"',1)
