@@ -180,7 +180,7 @@ def inspect(session,row):
  attempts=[];hits=[];verified_pages=[]
  for url in urls:
   try:
-   response=session.get(url,headers=HEADERS,timeout=12,allow_redirects=False)
+   response=session.get(url,headers=HEADERS,timeout=12,allow_redirects=True)
    if response.status_code!=200:attempts.append(url+" HTTP "+str(response.status_code));continue
    if not same_host(response.url,domain):attempts.append(url+" Fremddomain");continue
    pdf="pdf" in response.headers.get("Content-Type","").lower() or urlparse(url).path.lower().endswith(".pdf")
