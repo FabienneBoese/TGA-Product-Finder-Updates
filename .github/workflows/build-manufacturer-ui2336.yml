@@ -1,0 +1,47 @@
+name: Build manufacturer website search v2.3.36
+on:
+  push:
+    paths: ['.github/workflows/build-manufacturer-ui2336.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrate, test and publish in-app update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          python3 -m unittest discover -s research -p 'test_*manufacturer*py' -v
+          mkdir -p /tmp/tga2336
+          unzip -q TGA_Product_Finder_Update_v2.3.35.zip -d /tmp/tga2336
+          python3 research/build_manufacturer_ui2336.py
+          TGA_DATA_DIR=/tmp/tga2336_test_data python3 - <<'PY'
+          import os
+          from streamlit.testing.v1 import AppTest
+          os.chdir('/tmp/tga2336')
+          app=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not app.exception,app.exception
+          print('PASS: App startup with manufacturer search')
+          PY
+          (cd /tmp/tga2336 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.36.zip" app.py version.json TGA_Updater.ps1 research)
+          unzip -t TGA_Product_Finder_Update_v2.3.36.zip
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('TGA_Product_Finder_Update_v2.3.36.zip')
+          Path('update_manifest.json').write_text(json.dumps({
+            'version':'2.3.36',
+            'download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.36.zip',
+            'sha256':hashlib.sha256(p.read_bytes()).hexdigest()
+          },indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.36.zip update_manifest.json
+          git commit -m 'Publish integrated manufacturer website search v2.3.36'
+          git pull --rebase origin main
+          git push origin HEAD:main
