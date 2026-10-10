@@ -48,7 +48,7 @@ def sitemap_urls(session,domain,model,product=""):
     soup=BeautifulSoup(r.content,"html.parser")
     entries=[x.get_text(strip=True) for x in soup.find_all("loc")[:12000]]
     if entries and all(x.endswith(".xml") for x in entries[:min(3,len(entries))]):
-     index=sorted(entries,key=lambda u: (not any(word in u.casefold() for word in ('product','produkt','catalog','katalog')),u))[:10];entries=[]
+     index=sorted(entries,key=lambda u: (not any(word in u.casefold() for word in ('product','produkt','catalog','katalog')),u))[:25];entries=[]
      for child in index:
       if not same_host(child,domain):continue
       sub=session.get(child,headers=HEADERS,timeout=8)
@@ -136,7 +136,7 @@ def discover(session,domain,product,model,maker=""):
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
  # Avoid Google's 429 responses. Try two independent public discovery endpoints.
  for endpoint,param in (("https://www.bing.com/search?format=rss","q"),("https://www.bing.com/search","q")):
-  if len(urls)>=8:break
+  if len(urls)>=40:break
   if endpoint in DISABLED_SEARCH_PROVIDERS:continue
   try:
    response=session.get(endpoint,params={param:query},headers=HEADERS,timeout=12)
@@ -156,11 +156,11 @@ def discover(session,domain,product,model,maker=""):
     if href.startswith("/l/?"):href=parse_qs(urlparse(href).query).get("uddg",[""])[0]
     if href.startswith("https://") and same_host(href,domain) and href not in urls:
      urls.append(href)
-    if len(urls)>=8:break
+    if len(urls)>=40:break
    if not urls:notes.append(urlparse(endpoint).hostname+" ohne Hersteller-URLs")
   except requests.RequestException as exc:
    notes.append(urlparse(endpoint).hostname+" "+type(exc).__name__)
- return urls," | ".join(notes)
+ return urls[:40]," | ".join(notes)
 
 def inspect(session,row):
  maker=row.get("Hersteller","")
