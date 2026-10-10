@@ -1,0 +1,404 @@
+==== line 361 ====
+356:                 add(u)
+357:                 if len(urls)>=limit:break
+358:         except requests.RequestException:pass
+359:     return urls[:limit]
+360: 
+361: def _tga_research_online(maker,product,model="",dimension="",original_code="",session=None,domain=None):
+362:     domain=domain or _tga_maker_domain(maker) or _tga_extra_domains(maker)
+363:     if not domain:return {"status":"Herstellerdomain unbekannt","candidates":[],"sources":[]}
+364:     sess=session or requests.Session()
+365:     query=" ".join(str(x or "").strip() for x in (maker,product,model,dimension,original_code)).strip()
+366:     urls=_tga_discover_urls(sess,query,domain)
+367:     candidates=[];sources=[]
+368:     for url in urls:
+369:         try:
+370:             r=sess.get(url,headers=_HEADERS,timeout=10,allow_redirects=False)
+371:             if r.status_code!=200:continue
+372:             if not _tga_official(r.url,domain):continue
+373:             txt=_tga_source_text(r)
+374:             if not txt:continue
+375:             sources.append(url)
+376:             # Reject cross-product pages: model must occur on the source if supplied.
+377:             if model and re.sub(r"\W+","",model).casefold() not in re.sub(r"\W+","",txt).casefold():
+378:                 continue
+379:                       # Search product-local structured HTML records, never entire pages.
+380:             is_pdf = "pdf" in r.headers.get("Content-Type","").lower() or r.url.lower().split("?")[0].endswith(".pdf")
+381:             records = extract_pdf_records(txt, model=model, dimension=dimension) if is_pdf else extract_html_records(r.text, model=model, dimension=dimension)
+382:             for code, evidence in records:
+383:                 if (code,url) not in candidates:candidates.append((code,url))
+384:             if not is_pdf:
+385:                 for pdf_url in extract_html_links(r.text, url, domain, limit=5):
+386:                     try:
+387:                         pdf=sess.get(pdf_url,headers=_HEADERS,timeout=10,allow_redirects=False)
+388:                         if pdf.status_code!=200 or not _tga_official(pdf.url,domain):continue
+389:                         pdf_text=_tga_source_text(pdf)
+390:                         for code, evidence in extract_pdf_records(pdf_text,model=model,dimension=dimension):
+391:                             if (code,pdf_url) not in candidates:candidates.append((code,pdf_url))
+392:                     except requests.RequestException:continue
+393:         except requests.RequestException:continue
+394:     return {"status":"Kandidaten – technische Prüfung offen" if candidates else ("Quellen ohne belegte Artikelnummer" if sources else "Keine abrufbaren Herstellerquellen"),
+395:             "candidates":candidates[:20],"sources":sources}
+396: 
+397: def _tga_extra_domains(maker):
+398:     known={'lunos':'lunos.de','danfoss':'danfoss.com','kermi':'kermi.com','ostendorf':'ostendorf-kunststoffe.com','jung pumpen':'jung-pumpen.de','laufen':'laufen.com','duravit':'duravit.com','hewi':'hewi.com','alape':'alape.com','wittingsthal':'wittingsthal.de','witingsthal':'wittingsthal.de','viessmann':'viessmann.de','grundfos':'grundfos.com','vaillant':'vaillant.de'}
+399:     key=str(maker or '').casefold()
+400:     return next((v for k,v in known.items() if k in key),'')
+401: 
+402: def _tga_valid_article_candidate(code):
+403:     import re
+404:     value=str(code or '').strip().strip('.,;:')
+405:     if not 4<=len(value)<=26:return False
+406:     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9./-]*',value):return False
+407:     if not any(c.isdigit() for c in value):return False
+408:     if value.casefold() in {'einbaudatum','bestellnummer','artikelnummer','2024','2025','2026'}:return False
+409:     return True
+410: 
+411: def _tga_bulk_candidates(maker, query, model='', dimension=''):
+412:     result=_tga_research_online(maker,query,model=model,dimension=dimension)
+413:     return result["candidates"], (None if result["candidates"] else result["status"])
+414: 
+415: 
+416: 
+417: def _tga_article_search_links(maker, query):
+418:     from urllib.parse import quote_plus
+419:     domain=_tga_maker_domain(maker)
+420:     phrase=(query or '').strip()
+421:     searches=[
+422:         ('Hersteller-Produktsuche',phrase+' Artikelnummer Bestellnummer'),
+423:         ('Hersteller-PDF-Katalog',phrase+' Artikelnummer filetype:pdf'),
+424:         ('Alternativsuche',phrase+' Art.-Nr.'),
+425:     ]
+426:     if domain:
+427:         searches=[(title,term+' site:'+domain) for title,term in searches]
+428:     return [('https://www.google.com/search?q='+quote_plus(term),title) for title,term in searches]
+429: 
+430: def _tga_article_diagnosis(rows):
+431:     import re
+432:     for row in rows:
+433:         raw=str(row.get('Artikelnummer-Kandidat') or '').strip()
+434:         maker=str(row.get('Hersteller') or '').strip()
+435:         model=str(row.get('Typ / Modell') or '').strip()
+436:         row['Bestandskennung (ungeprüft)']=raw
+437:         row['Artikelnummer-Kandidat']=''
+438:         if not raw:
+439:             row['Artikelnummer-Status']='Nicht ermittelt'
+440:             continue
+441:         norm=raw.upper().replace(' ','')
+442:         is_model=(norm==model.upper().replace(' ','')) or norm in ('MCX3','MS-2LN110','AG.STAHLFORM505')
+443:         if is_model:
+444:             row['Artikelnummer-Status']='Typ/Modell, keine Artikelnummer bestätigt'
+445:             if not model: row['Typ / Modell']=raw
+446:         elif re.fullmatch(r'[0-9]{4,12}(?:[.][0-9]{1,4})*',norm):
+447:             row['Artikelnummer-Status']='Nummernkandidat aus Bestandsdaten, Herstellerprüfung offen'
+448:         else:
+449:             row['Artikelnummer-Status']='Ungeprüfte Bestandskennung'
+450:         row['Prüfstatus']='Artikelnummer nicht herstellerseitig bestätigt'
+451:         row['Ebene']='Variante / Typ' if row.get('Typ / Modell') or row.get('Dimension') else 'Produktfamilie / System'
+452:     return rows
+453: 
+454: 
+455: def _tga_maker_domain(maker):
+==== line 411 ====
+406:     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9./-]*',value):return False
+407:     if not any(c.isdigit() for c in value):return False
+408:     if value.casefold() in {'einbaudatum','bestellnummer','artikelnummer','2024','2025','2026'}:return False
+409:     return True
+410: 
+411: def _tga_bulk_candidates(maker, query, model='', dimension=''):
+412:     result=_tga_research_online(maker,query,model=model,dimension=dimension)
+413:     return result["candidates"], (None if result["candidates"] else result["status"])
+414: 
+415: 
+416: 
+417: def _tga_article_search_links(maker, query):
+418:     from urllib.parse import quote_plus
+419:     domain=_tga_maker_domain(maker)
+420:     phrase=(query or '').strip()
+421:     searches=[
+422:         ('Hersteller-Produktsuche',phrase+' Artikelnummer Bestellnummer'),
+423:         ('Hersteller-PDF-Katalog',phrase+' Artikelnummer filetype:pdf'),
+424:         ('Alternativsuche',phrase+' Art.-Nr.'),
+425:     ]
+426:     if domain:
+427:         searches=[(title,term+' site:'+domain) for title,term in searches]
+428:     return [('https://www.google.com/search?q='+quote_plus(term),title) for title,term in searches]
+429: 
+430: def _tga_article_diagnosis(rows):
+431:     import re
+432:     for row in rows:
+433:         raw=str(row.get('Artikelnummer-Kandidat') or '').strip()
+434:         maker=str(row.get('Hersteller') or '').strip()
+435:         model=str(row.get('Typ / Modell') or '').strip()
+436:         row['Bestandskennung (ungeprüft)']=raw
+437:         row['Artikelnummer-Kandidat']=''
+438:         if not raw:
+439:             row['Artikelnummer-Status']='Nicht ermittelt'
+440:             continue
+441:         norm=raw.upper().replace(' ','')
+442:         is_model=(norm==model.upper().replace(' ','')) or norm in ('MCX3','MS-2LN110','AG.STAHLFORM505')
+443:         if is_model:
+444:             row['Artikelnummer-Status']='Typ/Modell, keine Artikelnummer bestätigt'
+445:             if not model: row['Typ / Modell']=raw
+446:         elif re.fullmatch(r'[0-9]{4,12}(?:[.][0-9]{1,4})*',norm):
+447:             row['Artikelnummer-Status']='Nummernkandidat aus Bestandsdaten, Herstellerprüfung offen'
+448:         else:
+449:             row['Artikelnummer-Status']='Ungeprüfte Bestandskennung'
+450:         row['Prüfstatus']='Artikelnummer nicht herstellerseitig bestätigt'
+451:         row['Ebene']='Variante / Typ' if row.get('Typ / Modell') or row.get('Dimension') else 'Produktfamilie / System'
+452:     return rows
+453: 
+454: 
+455: def _tga_maker_domain(maker):
+456:  import re
+457:  known={'trox':'trox.de','geberit':'geberit.de','grohe':'grohe.de','rockwool':'rockwool.com','helios':'heliosventilatoren.de','clage':'clage.de','viega':'viega.de','reflex':'reflex-winkelmann.com','wika':'wika.com','imi':'imi-hydronic.com'}
+458:  low=str(maker or '').casefold()
+459:  return next((domain for name,domain in known.items() if name in low),'')
+460: 
+461: def _tga_find_manufacturer_sources(maker,query):
+462:  import requests
+463:  from bs4 import BeautifulSoup
+464:  from urllib.parse import urlparse,parse_qs,unquote
+465:  domain=_tga_maker_domain(maker)
+466:  if not domain:
+467:   return [],'Für diesen Hersteller ist noch keine offizielle Web-Domain hinterlegt. Bitte die Herstellerquelle manuell prüfen.'
+468:  try:
+469:   response=requests.get('https://www.google.com/search',params={'q':query+' site:'+domain},headers={'User-Agent':'Mozilla/5.0'},timeout=8)
+470:   response.raise_for_status()
+471:   soup=BeautifulSoup(response.text,'html.parser')
+472:   hits=[];seen=set()
+473:   for a in soup.find_all('a',href=True):
+474:    href=a['href']
+475:    if href.startswith('/url?'): href=parse_qs(urlparse(href).query).get('q',[''])[0]
+476:    if not href.startswith(('http://','https://')):continue
+477:    host=(urlparse(href).hostname or '').lower()
+478:    if host!=domain and not host.endswith('.'+domain):continue
+479:    if href in seen:continue
+480:    title=a.get_text(' ',strip=True)
+481:    if len(title)<12:continue
+482:    seen.add(href)
+483:    hits.append({'title':title[:160],'url':href})
+484:    if len(hits)>=6:break
+485:   return hits,None
+486:  except requests.RequestException:
+487:   return [],'Herstellerrecherche derzeit nicht erreichbar. Die lokale Produktliste bleibt unverändert.'
+488: 
+489: def _ident_csv(rows):
+490:     import csv,io
+491:     f=io.StringIO()
+492:     if rows:
+493:         writer=csv.DictWriter(f,fieldnames=list(rows[0].keys()),delimiter=';')
+494:         writer.writeheader()
+495:         writer.writerows(rows)
+496:     return '\ufeff'+f.getvalue()
+497: 
+498: """Manufacturer-neutral parsing. Detection never implies manufacturer verification."""
+499: import re
+500: from dataclasses import dataclass,asdict
+501: @dataclass
+502: class Identity:
+503:     manufacturer:str
+504:     family:str
+505:     model:str
+==== line 412 ====
+407:     if not any(c.isdigit() for c in value):return False
+408:     if value.casefold() in {'einbaudatum','bestellnummer','artikelnummer','2024','2025','2026'}:return False
+409:     return True
+410: 
+411: def _tga_bulk_candidates(maker, query, model='', dimension=''):
+412:     result=_tga_research_online(maker,query,model=model,dimension=dimension)
+413:     return result["candidates"], (None if result["candidates"] else result["status"])
+414: 
+415: 
+416: 
+417: def _tga_article_search_links(maker, query):
+418:     from urllib.parse import quote_plus
+419:     domain=_tga_maker_domain(maker)
+420:     phrase=(query or '').strip()
+421:     searches=[
+422:         ('Hersteller-Produktsuche',phrase+' Artikelnummer Bestellnummer'),
+423:         ('Hersteller-PDF-Katalog',phrase+' Artikelnummer filetype:pdf'),
+424:         ('Alternativsuche',phrase+' Art.-Nr.'),
+425:     ]
+426:     if domain:
+427:         searches=[(title,term+' site:'+domain) for title,term in searches]
+428:     return [('https://www.google.com/search?q='+quote_plus(term),title) for title,term in searches]
+429: 
+430: def _tga_article_diagnosis(rows):
+431:     import re
+432:     for row in rows:
+433:         raw=str(row.get('Artikelnummer-Kandidat') or '').strip()
+434:         maker=str(row.get('Hersteller') or '').strip()
+435:         model=str(row.get('Typ / Modell') or '').strip()
+436:         row['Bestandskennung (ungeprüft)']=raw
+437:         row['Artikelnummer-Kandidat']=''
+438:         if not raw:
+439:             row['Artikelnummer-Status']='Nicht ermittelt'
+440:             continue
+441:         norm=raw.upper().replace(' ','')
+442:         is_model=(norm==model.upper().replace(' ','')) or norm in ('MCX3','MS-2LN110','AG.STAHLFORM505')
+443:         if is_model:
+444:             row['Artikelnummer-Status']='Typ/Modell, keine Artikelnummer bestätigt'
+445:             if not model: row['Typ / Modell']=raw
+446:         elif re.fullmatch(r'[0-9]{4,12}(?:[.][0-9]{1,4})*',norm):
+447:             row['Artikelnummer-Status']='Nummernkandidat aus Bestandsdaten, Herstellerprüfung offen'
+448:         else:
+449:             row['Artikelnummer-Status']='Ungeprüfte Bestandskennung'
+450:         row['Prüfstatus']='Artikelnummer nicht herstellerseitig bestätigt'
+451:         row['Ebene']='Variante / Typ' if row.get('Typ / Modell') or row.get('Dimension') else 'Produktfamilie / System'
+452:     return rows
+453: 
+454: 
+455: def _tga_maker_domain(maker):
+456:  import re
+457:  known={'trox':'trox.de','geberit':'geberit.de','grohe':'grohe.de','rockwool':'rockwool.com','helios':'heliosventilatoren.de','clage':'clage.de','viega':'viega.de','reflex':'reflex-winkelmann.com','wika':'wika.com','imi':'imi-hydronic.com'}
+458:  low=str(maker or '').casefold()
+459:  return next((domain for name,domain in known.items() if name in low),'')
+460: 
+461: def _tga_find_manufacturer_sources(maker,query):
+462:  import requests
+463:  from bs4 import BeautifulSoup
+464:  from urllib.parse import urlparse,parse_qs,unquote
+465:  domain=_tga_maker_domain(maker)
+466:  if not domain:
+467:   return [],'Für diesen Hersteller ist noch keine offizielle Web-Domain hinterlegt. Bitte die Herstellerquelle manuell prüfen.'
+468:  try:
+469:   response=requests.get('https://www.google.com/search',params={'q':query+' site:'+domain},headers={'User-Agent':'Mozilla/5.0'},timeout=8)
+470:   response.raise_for_status()
+471:   soup=BeautifulSoup(response.text,'html.parser')
+472:   hits=[];seen=set()
+473:   for a in soup.find_all('a',href=True):
+474:    href=a['href']
+475:    if href.startswith('/url?'): href=parse_qs(urlparse(href).query).get('q',[''])[0]
+476:    if not href.startswith(('http://','https://')):continue
+477:    host=(urlparse(href).hostname or '').lower()
+478:    if host!=domain and not host.endswith('.'+domain):continue
+479:    if href in seen:continue
+480:    title=a.get_text(' ',strip=True)
+481:    if len(title)<12:continue
+482:    seen.add(href)
+483:    hits.append({'title':title[:160],'url':href})
+484:    if len(hits)>=6:break
+485:   return hits,None
+486:  except requests.RequestException:
+487:   return [],'Herstellerrecherche derzeit nicht erreichbar. Die lokale Produktliste bleibt unverändert.'
+488: 
+489: def _ident_csv(rows):
+490:     import csv,io
+491:     f=io.StringIO()
+492:     if rows:
+493:         writer=csv.DictWriter(f,fieldnames=list(rows[0].keys()),delimiter=';')
+494:         writer.writeheader()
+495:         writer.writerows(rows)
+496:     return '\ufeff'+f.getvalue()
+497: 
+498: """Manufacturer-neutral parsing. Detection never implies manufacturer verification."""
+499: import re
+500: from dataclasses import dataclass,asdict
+501: @dataclass
+502: class Identity:
+503:     manufacturer:str
+504:     family:str
+505:     model:str
+506:     dimension:str
+==== line 2559 ====
+2554:    _bulk=[]
+2555:    _progress=st.progress(0)
+2556:    for _n,_r in enumerate(_ident_rows):
+2557:     _maker=str(_r.get('Hersteller') or '')
+2558:     _q=' '.join(str(_r.get(k) or '') for k in ('Hersteller','Produktfamilie','Typ / Modell','Dimension','Bestandskennung (ungeprüft)'))
+2559:     _hits,_err=_tga_bulk_candidates(_maker,_q,_r.get('Typ / Modell',''),_r.get('Dimension',''))
+2560:     _bulk.append({'ID':_r['ID'],'Hersteller':_maker,'Produkt':_r.get('Produktfamilie',''),'Artikelnummern-Kandidaten':', '.join(dict.fromkeys(h[0] for h in _hits)),'Quellen':', '.join(dict.fromkeys(h[1] for h in _hits)),'Status':_err or ('Prüfung erforderlich' if _hits else 'Keine Treffer')})
+2561:     _progress.progress((_n+1)/len(_ident_rows))
+2562:    st.session_state['bulk_article_results']=_bulk
+2563:   if st.session_state.get('bulk_article_results'):
+2564:    st.dataframe(st.session_state['bulk_article_results'],hide_index=True,width='stretch',height=max(250,38*(len(st.session_state['bulk_article_results'])+1)))
+2565:    st.download_button('Artikelrecherche als CSV exportieren',data=_ident_csv(st.session_state['bulk_article_results']),file_name='TGA_Artikelrecherche.csv',mime='text/csv')
+2566:   st.caption('Recherche auf Hersteller-Webseiten; Treffer sind Vorschläge, keine bestätigten Artikelnummern. Die Projektdaten bleiben unverändert.')
+2567:   _options={str(r['ID']):str(r['ID'])+' · '+str(r['Hersteller'])+' · '+str(r['Produktfamilie']) for r in _ident_rows}
+2568:   if _options:
+2569:    _chosen=st.selectbox('Komponente für Artikelrecherche',list(_options),format_func=lambda k:_options[k],key='universal_article_research_select')
+2570:    if st.button('Herstellerquellen recherchieren',key='universal_article_research_button'):
+2571:     _entry=next(r for r in _ident_rows if str(r['ID'])==_chosen)
+2572:     _q=' '.join(str(_entry.get(k) or '') for k in ('Hersteller','Produktfamilie','Typ / Modell','Dimension','Bestandskennung (ungeprüft)')).strip()
+2573:     _maker=str(_entry.get('Hersteller') or '').strip()
+2574:     if not _maker:
+2575:      st.warning('Hersteller fehlt: bitte zunächst Hersteller zuordnen.')
+2576:     else:
+2577:      with st.spinner('Suche nach Herstellerquellen …'):
+2578:       _hits,_err=_tga_find_manufacturer_sources(_maker,_q)
+2579:      if _err: st.info(_err)
+2580:      if _hits:
+2581:       for _h in _hits:
+2582:        st.markdown('['+_h['title'].replace('[','').replace(']','')+']('+_h['url']+')')
+2583:        st.caption('Herstellerquelle – Artikelnummer und Ausführung manuell abgleichen')
+2584:      else:
+2585:       st.info('Keine eindeutig zuordenbaren Herstellerseiten gefunden. Bitte Suchbegriffe prüfen.')
+2586:      st.link_button('Weitere Websuche öffnen','https://www.google.com/search?q='+__import__('urllib.parse',fromlist=['quote']).quote(_q+' site:'+_tga_maker_domain(_maker)) if _tga_maker_domain(_maker) else 'https://www.google.com/search?q='+__import__('urllib.parse',fromlist=['quote']).quote(_q))
+2587:      for _url,_label in _tga_article_search_links(_maker,_q):
+2588:       st.link_button(_label,_url)
+2589:   st.caption('Dokumentationsgruppe je Produkt direkt auswählen:')
+2590:   _hdr=st.columns([2,3,3])
+2591:   _hdr[0].markdown('**Hersteller**')
+2592:   _hdr[1].markdown('**Produkt**')
+2593:   _hdr[2].markdown('**Dokumentationsgruppe**')
+2594:   for _idx,_item in ovdf.iterrows():
+2595:    _maker=str(rows[_idx][1])
+2596:    _prod=str(rows[_idx][2])
+2597:    _m=_maker.lower()
+2598:    _p=_prod.lower()
+2599:    if 'trox' in _m and 'fk2' in _p:
+2600:     _allowed=['Standardausführung','ATEX-Ausführung']
+2601:    elif 'geberit' in _m and 'mapress' in _p:
+2602:     _allowed=['Systemrohr','Formstück / Muffe','Gesamtes System']
+2603:    else:
+2604:     _allowed=['Allgemeine Unterlagen','Abweichende Nachweise']
+2605:    _old=str(_item['Dokumentationsgruppe'] or '')
+2606:    _choices=['']+_allowed
+2607:    if _old and _old not in _choices:
+2608:     _choices.append(_old)
+2609:    _cells=st.columns([2,3,3])
+2610:    _cells[0].write(_maker)
+2611:    _cells[1].write(_prod)
+2612:    _new=_cells[2].selectbox('Dokumentationsgruppe',_choices,index=_choices.index(_old) if _old in _choices else 0,key='variant_row_'+str(rows[_idx][0]),label_visibility='collapsed')
+2613:    if _new!=_old:
+2614:     if _new and _new not in _allowed:
+2615:      st.warning('Bisherige Zuordnung für '+_maker+' '+_prod+' überprüfen.')
+2616:     else:
+2617:      con.execute('UPDATE components SET doc_variant=? WHERE id=?',(_new,rows[_idx][0]))
+2618:      con.commit()
+2619:      st.success('Dokumentationsgruppe gespeichert: '+_maker+' '+_prod)
+2620:   _overview_event=None
+2621: 
+2622:   st.markdown('#### Produktdetails zur ausgewählten Tabellenzeile')
+2623:   st.caption('Eine Produktfamilie kann gemeinsam dokumentiert werden. Einzelartikel werden nur nach konkreter Herstellerprüfung ausgewählt; hier werden keine Artikelnummern erfunden.')
+2624:   _scope_rows=con.execute('SELECT id,manufacturer,product,product_family,documentation_scope,component_category,dimensions_grouped FROM components WHERE project=? ORDER BY id',(project,)).fetchall()
+2625:   if _scope_rows:
+2626:    _scope_map={f'{r[1]} | {r[2]} | ID {r[0]}':r for r in _scope_rows}
+2627:    _selected_index=None
+2628:    try:
+2629:     _selected_rows=[]
+2630:     if _selected_rows:
+2631:      _selected_index=int(_selected_rows[0])
+2632:    except (TypeError,ValueError,AttributeError,IndexError):
+2633:     pass
+2634:    _scope_labels=list(_scope_map)
+2635:    _selected_label=None
+2636:    _active_key='doc_active_component_'+str(project)
+2637:    if _selected_index is not None and 0<=_selected_index<len(rows):
+2638:     st.session_state[_active_key]=rows[_selected_index][0]
+2639:    _selected_id=st.session_state.get(_active_key)
+2640:    _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)
+2641:    if _selected_index is not None and 0<=_selected_index<len(rows):
+2642:     _selected_id=rows[_selected_index][0]
+2643:     _selected_label=next((label for label,item in _scope_map.items() if item[0]==_selected_id),None)
+2644:    _selected_label=st.selectbox('Produktdetails öffnen',_scope_labels,index=_scope_labels.index(_selected_label) if _selected_label in _scope_labels else 0)
+2645:    _scope_label=_selected_label if _selected_label in _scope_map else next(iter(_scope_map))
+2646:    st.caption('Ausgewähltes Produkt: '+_scope_label)
+2647:    _scope_item=_scope_map[_scope_label]
+2648:    _scope_id=_scope_item[0]
+2649:    _helios_row=con.execute('SELECT manufacturer,product,model_type,article_no FROM components WHERE id=?',(_scope_id,)).fetchone()
+2650:    if _helios_row:
+2651:     _helios_match=helios_official_article(*_helios_row)
+2652:     if _helios_match:
+2653:      st.caption('Helios-Herstellerquelle: '+_helios_match['source'])
