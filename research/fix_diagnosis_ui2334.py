@@ -18,7 +18,7 @@ controls='\n'.join(indent+line[3:] if line.startswith('   ') else line for line 
 s=s[:m.start()]+controls+'\n'+s[m.start():]
 assert s.index("##### Diagnoseberichte")<s.index("Artikelnummern aller Komponenten automatisch recherchieren")
 # UI controls and button share exact same indentation.
-assert re.search(r"(?m)^"+re.escape(indent)+r"st\.checkbox\('Diagnose-CSV",s)
+assert re.search(r"(?m)^"+re.escape(indent)+r"_upload_enabled=st\.checkbox\('Diagnose-CSV",s)
 assert re.search(r"(?m)^"+re.escape(indent)+r"if st\.button\('Artikelnummern aller Komponenten",s)
 s=s.replace('APP_VERSION = "2.3.33"','APP_VERSION = "2.3.34"',1)
 ast.parse(s)
