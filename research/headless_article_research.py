@@ -90,26 +90,35 @@ def product_page_score(url,title,product,model):
  if any(x in path for x in ("/produkt","/product","/artikel","/catalog","/katalog","/brandschutzklappen","/series/")):score+=6
  return score
 
+NAVIGATION_CACHE={}
 def internal_product_links(session,domain,product,model):
  """Discover official catalog/category links without relying on search-engine results."""
  roots=["https://"+domain+"/","https://www."+domain+"/"]
  if domain=="geberit.de":roots=["https://catalog.geberit.de/de-DE","https://www.geberit.de/"]
  elif domain=="trox.de":roots=["https://www.trox.de/brand--und-rauchschutzsysteme/brandschutzklappen-9abc97fe0357ecd2","https://www.trox.de/"]
  seen=set();ranked=[]
- for root in roots:
-  try:
-   response=session.get(root,headers=HEADERS,timeout=8)
-   if response.status_code!=200 or not same_host(response.url,domain):continue
-   soup=BeautifulSoup(response.text,"html.parser")
-   for a in soup.select("a[href]")[:2000]:
-    from urllib.parse import urljoin
-    url=urljoin(response.url,a.get("href",""))
-    if not url.startswith("https://") or not same_host(url,domain):continue
-    if url in seen:continue
-    seen.add(url)
-    score=product_page_score(url,a.get_text(" ",strip=True),product,model)
-    if score:ranked.append((score,url))
-  except requests.RequestException:continue
+ if domain in NAVIGATION_CACHE:
+  candidates=NAVIGATION_CACHE[domain]
+ else:
+  candidates=[]
+  for root in roots:
+   try:
+    response=session.get(root,headers=HEADERS,timeout=8)
+    if response.status_code!=200 or not same_host(response.url,domain):continue
+    soup=BeautifulSoup(response.text,"html.parser")
+    for a in soup.select("a[href]")[:2000]:
+     from urllib.parse import urljoin
+     url=urljoin(response.url,a.get("href",""))
+     if not url.startswith("https://") or not same_host(url,domain):continue
+     if url in seen:continue
+     seen.add(url)
+     score=product_page_score(url,a.get_text(" ",strip=True),product,model)
+     if score:ranked.append((score,url))
+   except requests.RequestException:continue
+  NAVIGATION_CACHE[domain]=candidates
+ for url,title in candidates:
+  score=product_page_score(url,title,product,model)
+  if score:ranked.append((score,url))
  return [url for _,url in sorted(ranked,key=lambda x:-x[0])[:5]]
 
 DISABLED_SEARCH_PROVIDERS=set()
