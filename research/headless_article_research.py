@@ -191,7 +191,7 @@ def inspect(session,row):
    heading=" ".join(x.get_text(" ",strip=True) for x in soup.select("h1")[:2])
    title=(soup.title.get_text(" ",strip=True) if soup.title else "")+" "+heading
    score=product_page_score(response.url,title,product,model)
-   if score>=12:verified_pages.append((score,response.url))
+   if score>=12 and response.url.startswith("https://") and same_host(response.url,domain):verified_pages.append((score,response.url))
    records=source_records(response.text,model=model,dimension=dimension,product=product)
    # A family catalogue must not assign its unrelated variant numbers.
    if "catalog.geberit.de" in urlparse(url).hostname.lower() and not re.fullmatch(r"[0-9]{3}\\.[0-9A-Z]{3}\\.[0-9A-Z]{2}\\.[0-9A-Z]",str(model or "")):
@@ -202,7 +202,7 @@ def inspect(session,row):
   except requests.RequestException as exc:attempts.append(url+" "+type(exc).__name__)
  out["Quellen-Diagnose"]=" | ".join(attempts)
  if verified_pages:
-  out["Produktseiten-URL"]=max(verified_pages)[1]
+  out["Produktseiten-URL"]=sorted(verified_pages,key=lambda item:-item[0])[0][1]
   out["Produktseiten-Status"]="Passende Hersteller-Produktseite (automatisch bewertet)"
  else:out["Produktseiten-Status"]="Nur unbestätigte Links oder Produktfamilie"
  out["Artikelnummern-Kandidaten"]=", ".join(dict.fromkeys(c for c,_ in hits))
