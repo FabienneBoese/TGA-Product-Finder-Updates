@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           set -e
-          echo 'Retry private CSV integration'
+          echo 'Verify private CSV integration'
           python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
           python3 -m unittest discover -s research -p 'test_private_diagnosis_upload.py' -v
           mkdir -p /tmp/tga2333
