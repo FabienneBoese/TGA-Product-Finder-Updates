@@ -3,18 +3,18 @@ import re
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-LABEL=re.compile(r"(?:artikel(?:nummer|[- ]?nr\\.?|[- ]?no\\.?)|art\\.-?nr\\.?|bestell(?:nummer|[- ]?nr\\.?)|ref\\.-?no\\.?|sku|mpn)",re.I)
+LABEL=re.compile(r"(?:artikel(?:nummer|[- ]?nr\.?|[- ]?no\.?)|art\.-?nr\.?|bestell(?:nummer|[- ]?nr\.?)|ref\.-?no\.?|sku|mpn)",re.I)
 VALID=re.compile(r"^[A-Za-z0-9][A-Za-z0-9./-]{3,28}$")
 def compact(x):return re.sub(r"[^a-z0-9]","",str(x or "").casefold())
 def valid(x):
  x=str(x or "").strip().strip(":;,")
- return bool(VALID.fullmatch(x) and any(c.isdigit() for c in x) and not re.fullmatch(r"(?:19|20)\\d{2}",x))
+ return bool(VALID.fullmatch(x) and any(c.isdigit() for c in x) and not re.fullmatch(r"(?:19|20)\d{2}",x))
 def same_host(url,domain):
  h=(urlparse(url).hostname or "").lower()
  return h==domain or h.endswith("."+domain)
 def code_from_label(text):
- text=re.sub(r"\\s+"," ",text).strip()
- m=re.search(r"(?:Artikel(?:nummer|[- ]?Nr\\.?)|Art\\.-?Nr\\.?|Bestell(?:nummer|[- ]?Nr\\.?)|Ref\\.-?No\\.?|SKU|MPN)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{3,28})",text,re.I)
+ text=re.sub(r"\s+"," ",text).strip()
+ m=re.search(r"(?:Artikel(?:nummer|[- ]?Nr\.?)|Art\.-?Nr\.?|Bestell(?:nummer|[- ]?Nr\.?)|Ref\.-?No\.?|SKU|MPN)\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{3,28})",text,re.I)
  return m.group(1) if m and valid(m.group(1)) else None
 def source_records(html,model="",dimension="",product=""):
  """Bounded rows, detail-page label/value pairs, and structured Product objects."""
@@ -70,7 +70,7 @@ def source_records(html,model="",dimension="",product=""):
 def pdf_records(text,model="",dimension=""):
  """Only bounded PDF rows; never numbers from unrelated catalogue sections."""
  out=[]
- lines=[re.sub(r"\\s+"," ",x).strip() for x in str(text or "").splitlines()]
+ lines=[re.sub(r"\s+"," ",x).strip() for x in str(text or "").splitlines()]
  for i,line in enumerate(lines):
   if not line:continue
   if model and compact(model) not in compact(line):continue
@@ -79,7 +79,7 @@ def pdf_records(text,model="",dimension=""):
   if c:out.append((c,"PDF-Zeile"))
   # Common manufacturer catalogue pattern: model followed by order number.
   if model:
-   m=re.search(re.escape(model)+r"\\s+([A-Z0-9][A-Z0-9./-]{3,28})\\b",line,re.I)
+   m=re.search(re.escape(model)+r"\s+([A-Z0-9][A-Z0-9./-]{3,28})\b",line,re.I)
    if m and valid(m.group(1)):out.append((m.group(1),"PDF-Katalogzeile"))
  return list(dict.fromkeys(out))
 def classify_hits(hits):
