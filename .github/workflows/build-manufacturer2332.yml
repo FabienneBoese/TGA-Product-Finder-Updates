@@ -27,27 +27,27 @@ jobs:
           begin=s.index("def _tga_bulk_candidates(maker, query, model='', dimension=''):")
           end=s.index(chr(10)+"def ",begin+5)
           fn="""def _tga_bulk_candidates(maker, query, model='', dimension=''):
-              domain=_tga_maker_domain(maker) or _tga_extra_domains(maker)
-              if not domain:return [],'Herstellerdomain unbekannt'
-              session=requests.Session()
-              phrase=" ".join(str(x or '') for x in (maker,query,model,dimension))
-              urls=_tga_discover_urls(session,phrase,domain)
-              hits=[];visited=[]
-              for url in urls[:10]:
-                  try:
-                      r=session.get(url,headers=_HEADERS,timeout=12,allow_redirects=False)
-                      if r.status_code!=200 or not same_host(r.url,domain):continue
-                      is_pdf='pdf' in r.headers.get('Content-Type','').lower() or r.url.lower().split('?')[0].endswith('.pdf')
-                      txt=_tga_source_text(r) if is_pdf else r.text
-                      if not txt:continue
-                      visited.append(url)
-                      records=pdf_records(txt,model,dimension) if is_pdf else source_records(txt,model,dimension,query)
-                      for code,evidence in records:
-                          if (code,url) not in hits:hits.append((code,url))
-                  except requests.RequestException:
-                      continue
-              return hits[:30],(None if hits else 'Quellen ohne belegte Artikelnummer' if visited else 'Keine abrufbaren Herstellerquellen')
-          """
+                        domain=_tga_maker_domain(maker) or _tga_extra_domains(maker)
+                        if not domain:return [],'Herstellerdomain unbekannt'
+                        session=requests.Session()
+                        phrase=" ".join(str(x or '') for x in (maker,query,model,dimension))
+                        urls=_tga_discover_urls(session,phrase,domain)
+                        hits=[];visited=[]
+                        for url in urls[:10]:
+                            try:
+                                r=session.get(url,headers=_HEADERS,timeout=12,allow_redirects=False)
+                                if r.status_code!=200 or not same_host(r.url,domain):continue
+                                is_pdf='pdf' in r.headers.get('Content-Type','').lower() or r.url.lower().split('?')[0].endswith('.pdf')
+                                txt=_tga_source_text(r) if is_pdf else r.text
+                                if not txt:continue
+                                visited.append(url)
+                                records=pdf_records(txt,model,dimension) if is_pdf else source_records(txt,model,dimension,query)
+                                for code,evidence in records:
+                                    if (code,url) not in hits:hits.append((code,url))
+                            except requests.RequestException:
+                                continue
+                        return hits[:30],(None if hits else 'Quellen ohne belegte Artikelnummer' if visited else 'Keine abrufbaren Herstellerquellen')
+                    """
           import textwrap
           fn=textwrap.dedent(fn)
           s=s[:begin]+fn+s[end:]
