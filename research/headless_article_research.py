@@ -85,6 +85,8 @@ def product_page_score(url,title,product,model):
  model_matches=sum(len(t) for t in model_tokens if t in path_flat or t in title_flat)
  product_matches=sum(len(t) for t in product_tokens if t in path_flat or t in title_flat)
  if model_tokens and not model_matches:return 0
+ distinctive=[t for t in model_tokens if len(t)>=4 and not t.isdigit()]
+ if distinctive and not any(t in path_flat or t in title_flat for t in distinctive):return 0
  if not model_tokens and not product_matches:return 0
  score=3*model_matches+product_matches
  if any(x in path for x in ("/produkt","/product","/artikel","/catalog","/katalog","/brandschutzklappen","/series/")):score+=6
