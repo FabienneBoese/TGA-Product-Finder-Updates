@@ -35,10 +35,11 @@ def seeded_urls(maker,product,model):
  return [url for (m,k),url in KNOWN_PRODUCTS.items() if m in str(maker).casefold() and k in text]
 
 SITEMAP_CACHE={}
-def sitemap_urls(session,domain,model):
+def sitemap_urls(session,domain,model,product=""):
  """Bounded official sitemap lookup, shared across products of one manufacturer."""
- key=re.sub(r"[^a-z0-9]","",str(model or "").casefold())
- if len(key)<4:return []
+ terms=[re.sub(r"[^a-z0-9]","",t.casefold()) for t in re.findall(r"[\\w-]{3,}",str(model or "")+" "+str(product or ""))]
+ terms=[t for t in terms if len(t)>=4 and t not in {"element","ventilator","produkt","pumpe","gehaeuse","gehaüse","duofix","gebe"}]
+ if not terms:return []
  if domain not in SITEMAP_CACHE:
   entries=[]
   try:
@@ -55,13 +56,18 @@ def sitemap_urls(session,domain,model):
        entries.extend(x.get_text(strip=True) for x in BeautifulSoup(sub.content,"html.parser").find_all("loc")[:12000])
   except requests.RequestException:pass
   SITEMAP_CACHE[domain]=[u for u in entries if u.startswith("https://") and same_host(u,domain) and not u.endswith(".xml")][:25000]
- return [u for u in SITEMAP_CACHE[domain] if key in re.sub(r"[^a-z0-9]","",urlparse(u).path.casefold())][:3]
+ ranked=[]
+ for u in SITEMAP_CACHE[domain]:
+  path=re.sub(r"[^a-z0-9]","",urlparse(u).path.casefold())
+  score=sum(len(t) for t in terms if t in path)
+  if score>=4:ranked.append((score,u))
+ return [u for _,u in sorted(ranked,key=lambda x:-x[0])[:5]]
 
 DISABLED_SEARCH_PROVIDERS=set()
 def discover(session,domain,product,model,maker=""):
  from urllib.parse import parse_qs,unquote
  urls=seeded_urls(maker,product,model)
- for candidate in sitemap_urls(session,domain,model):
+ for candidate in sitemap_urls(session,domain,model,product):
   if candidate not in urls:urls.append(candidate)
  notes=[]
  query="site:"+domain+" "+str(product or "")+" "+str(model or "")
