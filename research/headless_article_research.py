@@ -22,6 +22,7 @@ KNOWN_PRODUCTS={
  ("helios","sb 125 a"):"https://www.heliosventilatoren.de/de/produkte/boxventilatoren/silentbox/sb-125-a-09506",
  ("helios","pa 10"):"https://www.heliosventilatoren.de/de/produkte/messen-steuern-regeln/betriebsschalter/pa-10-01735",
  ("geberit","sigma50"):"https://catalog.geberit.de/de-DE/product/PRO_841159",
+ ("wika","111.10"):"https://www.wika.com/de-de/111_10_111_12.WIKA",
  ("danfoss","ecl comfort 310"):"https://designcenter.danfoss.com/products/climate-solutions-for-heating/electronic-controllers-and-monitoring-solutions/ecl-comfort-controllers/ecl-comfort-310?tab=products",
  ("jung pumpen","u3k"):"https://www.jung-pumpen.de/produkte/pumpen/u3/u3k-10-m-leitung",
  ("rockwool","conlit 150"):"https://www.rockwool.com/de/produkte/conlit-150-u/",
