@@ -1,0 +1,49 @@
+name: Live test manufacturer website discovery v2.3.37
+on:
+  push:
+    paths: ['.github/workflows/live-test-manufacturer2337.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install -q requests beautifulsoup4
+      - name: Real internet lookup of manufacturers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import ast,requests,re,json
+          from pathlib import Path
+          from urllib.parse import urlparse,parse_qs,unquote
+          from bs4 import BeautifulSoup
+          build=ast.parse(Path('research/build_manufacturer_ui2337.py').read_text(encoding='utf-8'))
+          ui=next(ast.literal_eval(n.value) for n in build.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='ui' for t in n.targets))
+          parsed=ast.parse(ui)
+          func=next(n for n in ast.walk(parsed) if isinstance(n,ast.FunctionDef) and n.name=='_tga_discover')
+          host=next(n for n in ast.walk(parsed) if isinstance(n,ast.FunctionDef) and n.name=='_tga_host')
+          tokens=next(n for n in ast.walk(parsed) if isinstance(n,ast.FunctionDef) and n.name=='_tga_tokens')
+          namespace={'_tga_requests':requests,'_tga_re':re,'_tga_urlparse':urlparse,'_tga_qs':parse_qs,'_tga_unquote':unquote,'_tga_Soup':BeautifulSoup,'_tga_headers':{'User-Agent':'Mozilla/5.0'}}
+          code=compile(ast.Module(body=[host,tokens,func],type_ignores=[]),'embedded_search','exec')
+          exec(code,namespace)
+          results={}
+          with requests.Session() as session:
+              for maker,product,model in [('Helios','Ventilatorbox','SB 125 A'),('TROX','Brandschutzklappe','FK2-EU'),('Geberit','Mapress Therm','')]:
+                  try:
+                      website,page,status,search_status=namespace['_tga_discover'](session,maker,product,model)
+                      results[maker]={'website':website,'product_page':page,'website_status':status,'search_status':search_status}
+                  except Exception as exc:
+                      results[maker]={'error':str(exc)}
+          print(json.dumps(results,ensure_ascii=False,indent=2))
+          Path('manufacturer_live_results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+          confirmed=sum(bool(x.get('website')) for x in results.values())
+          print('CONFIRMED WEBSITES:',confirmed,'of',len(results))
+          assert confirmed>=1,'FAIL: real website discovery found zero manufacturer websites'
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manufacturer-live-results
+          path: manufacturer_live_results.json
