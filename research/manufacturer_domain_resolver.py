@@ -18,12 +18,15 @@ COMMON = {"gmbh", "ag", "kg", "co", "deutschland", "gruppe", "group", "technik",
 
 # Reviewed manufacturer-owned domain transitions from live audit (2026-10-10).
 # This registry applies to every product search using this resolver.
+KNOWN_MANUFACTURER_DOMAINS = {"schedel": "schedel-badinnovation.de", "wittigsthal": "wittigsthal.de", "wittingsthal": "wittigsthal.de", "duravit": "duravit.com"}
+
 OFFICIAL_REDIRECTS = {
     "grohe.de": {"grohe.com"},
     "clage.de": {"clage.com"},
     "hewi.de": {"hewi.com"},
     "imi-hydronic.com": {"imiplc.com"},
     "alape.com": {"laufen.com"},
+    "duravit.de": {"duravit.com"},
 }
 
 def allowed_redirect(source, target):
@@ -94,8 +97,11 @@ def resolve(session, maker, cache, known_domain=""):
     if _verified_cached_entry(saved):
         return saved["domain"], saved["homepage"], saved.get("status", "Verifizierter Cache")
     known_domain = domain_name(known_domain) if "://" in known_domain else known_domain.lower().removeprefix("www.")
+    known_domain = KNOWN_MANUFACTURER_DOMAINS.get(key, known_domain)
     candidates = (["https://www." + known_domain + "/"] if known_domain else [])
     candidates.extend(search_links(session, maker))
+    # A direct official product or document URL can succeed when the homepage fails.
+    # This resolver checks homepages only; callers must retain blocked/unknown status.
     for candidate in candidates:
         if not plausible(maker, candidate) and domain_name(candidate) != known_domain:
             continue
