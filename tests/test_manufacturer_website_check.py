@@ -120,6 +120,25 @@ class ManufacturerWebsiteTest(unittest.TestCase):
         self.assertEqual(result["Herstellerdomain"], "blog.wika.com")
         self.assertEqual(result["Website-erreichbar"], "Ja")
 
+    def test_cloudflare_challenge_not_a_success(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://www.wika.com/", 403,
+                                         "<html><title>Just a moment...</title>Cloudflare</html>")
+        found, reason = probe(s, "https://www.wika.com/", ["wika.com"])
+        self.assertIsNone(found)
+        self.assertIn("Cloudflare-Bot-Schutz", reason)
+
+    def test_known_blocked_site_has_separate_human_link(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://www.wika.com/", 403,
+                                         "<html><title>Just a moment...</title>Cloudflare</html>")
+        result = check_manufacturer(s, "WIKA")
+        self.assertEqual(result["Website-erreichbar"], "Nein")
+        self.assertEqual(result["Herstellerwebsite"], "")
+        self.assertEqual(result["Herstellerwebsite-Browserlink"],
+                         "https://www.wika.com/de-de/startseite.WIKA")
+        self.assertEqual(result["Herstellerwebsite-Status"], "Automatischer Zugriff gesperrt")
+
     def test_country_path_fallbacks(self):
         self.assertIn("https://www.heliosventilatoren.de/de/", candidate_urls("heliosventilatoren.de"))
 
