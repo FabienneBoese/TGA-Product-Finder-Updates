@@ -1,0 +1,28 @@
+name: Inspect current manufacturer UI for local browser integration
+on:
+  push:
+    paths: ['.github/workflows/inspect-manufacturer-ui243.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect embedded manufacturer UI and app version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile,re
+          z=zipfile.ZipFile('TGA_Product_Finder_Update_v2.3.42.zip')
+          print('FILES',z.namelist())
+          s=z.read('app.py').decode('utf-8')
+          print('APP LEN',len(s))
+          for needle in ('# Manufacturer website search v2.3.42','def _site_find(', 'def _site_check(', 'Herstellerwebsites', 'Herstellerseitensuche'):
+              start=s.find(needle)
+              print('MATCH',needle,start)
+              if start>=0:
+                  print('SNIPPET',s[max(0,start-900):min(len(s),start+8500)])
+          print('END-UI',s[s.find('# Manufacturer website search v2.3.42'):][-14500:])
+          PY
