@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 from manufacturer_article_engine import source_records,same_host
 
-DOMAINS={"helios":"heliosventilatoren.de","trox":"trox.de","lunos":"lunos.de","rockwool":"rockwool.com","geberit":"geberit.de","grohe":"grohe.de","viega":"viega.de","clage":"clage.de","alape":"alape.com","witingsthal":"wittingsthal.de","wittingsthal":"wittingsthal.de","danfoss":"danfoss.com","kermi":"kermi.com","grundfos":"grundfos.com","duravit":"duravit.de","laufen":"laufen.com","hewi":"hewi.de","jung":"jung-pumpen.de","viessmann":"viessmann.de","vaillant":"vaillant.de","reflex":"reflex-winkelmann.com","wika":"wika.com","imi heimeier":"imi-hydronic.com","ostendorf":"ostendorf-kunststoffe.com","kemper":"kemper-group.com","villeroy":"villeroy-boch.de","newo":"newo.de","herzbach":"herzbach.com","emco":"emco-bath.com","schedel":"schedel-bad.de"}
+DOMAINS={"helios":"heliosventilatoren.de","trox":"trox.de","lunos":"lunos.de","rockwool":"rockwool.com","geberit":"geberit.de","grohe":"grohe.de","viega":"viega.de","clage":"clage.de","alape":"alape.com","witingsthal":"wittigsthal.de","wittingsthal":"wittigsthal.de","wittigsthal":"wittigsthal.de","danfoss":"danfoss.com","kermi":"kermi.com","grundfos":"grundfos.com","duravit":"duravit.de","laufen":"laufen.com","hewi":"hewi.de","jung":"jung-pumpen.de","viessmann":"viessmann.de","vaillant":"vaillant.de","reflex":"reflex-winkelmann.com","wika":"wika.com","imi heimeier":"imi-hydronic.com","ostendorf":"ostendorf-kunststoffe.com","kemper":"kemper-group.com","villeroy":"villeroy-boch.de","newo":"newo.de","herzbach":"herzbach.com","emco":"emco-bath.com","schedel":"schedel-bad.de"}
 HEADERS={"User-Agent":"Mozilla/5.0 (compatible; TGA-Product-Finder-Diagnosis/1.0)"}
 
 def domain_for(maker):
