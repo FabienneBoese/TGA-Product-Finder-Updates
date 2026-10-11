@@ -21,6 +21,9 @@ from manufacturer_domain_resolver import maker_key, domain_name, load_cache, sav
 OFFICIAL_ALIASES = {
     "heliosventilatoren.de": ("heliosventilatoren.de",),
     "wika.com": ("wika.com", "wika.de"),
+    "imi-hydronic.com": ("imi-hydronic.com", "imiplc.com"),
+    "alape.com": ("alape.com", "laufen.com"),
+    "wittigsthal.de": ("wittigsthal.de",),
     "villeroy-boch.de": ("villeroy-boch.de", "villeroy-boch.com"),
     "viega.de": ("viega.de", "viega.com"),
     "duravit.de": ("duravit.de", "duravit.com"),
@@ -39,9 +42,24 @@ LANDING_PATHS = {
     "kemper-group.com": ("/de-de/", "/"),
     "duravit.com": ("/de-de/", "/"),
     "villeroy-boch.de": ("/",),
+    "imiplc.com": ("/de-de/frontpage-de", "/de-de/", "/"),
+    "wittigsthal.de": ("/",),
+    "laufen.com": ("/",),
     "rockwool.com": ("/de/", "/"),
     "clage.com": ("/de/", "/"),
     "viega.com": ("/de/", "/"),
+}
+# Manufacturer-controlled, independently evidenced entry points. Only hostnames in
+# OFFICIAL_ALIASES may be visited/accepted; these are not reseller search hits.
+OFFICIAL_ENTRY_URLS = {
+    "wika.com": ("https://shop.wika.com/de-de/shop_startseite.WIKA",
+                 "https://www.wika.com/de-de/startseite.WIKA"),
+    "imi-hydronic.com": ("https://climatecontrol.imiplc.com/de-de/frontpage-de",
+                        "https://climatecontrol.imiplc.com/de-de/"),
+    "villeroy-boch.de": ("https://pro.villeroy-boch.com/de/de/home",
+                        "https://www.villeroy-boch.de/s/"),
+    "alape.com": ("https://www.de.laufen.com/home", "https://www.laufen.com/"),
+    "wittigsthal.de": ("https://www.wittigsthal.de/", "https://wittigsthal.de/"),
 }
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TGA-Product-Finder/2.3; Herstellerwebsite-Pruefung)"}
 BLOCK_MARKERS = ("access denied", "verify you are human", "checking your browser",
@@ -103,15 +121,19 @@ def check_manufacturer(session, maker):
                 "Website-erreichbar": "Nein", "Website-Pruefdiagnose": ""}
     allowed = official_hosts(primary)
     attempts = []
-    # Check all official alternative domains, without promoting arbitrary URLs.
-    for host in allowed:
-        for url in candidate_urls(host):
-            found, note = probe(session, url, allowed)
-            attempts.append(url + " -> " + note)
-            if found:
-                return {"Herstellerdomain": domain_name(found), "Herstellerwebsite": found,
-                        "Herstellerwebsite-Status": "Erreichbar: HTTP 200",
-                        "Website-erreichbar": "Ja", "Website-Pruefdiagnose": " | ".join(attempts)}
+    # Prefer explicitly evidenced official entry points, then ordinary homepages.
+    urls = list(OFFICIAL_ENTRY_URLS.get(primary, ()))
+    urls.extend(url for host in allowed for url in candidate_urls(host))
+    for url in dict.fromkeys(urls):
+        # Never send requests to an arbitrary host from a stale cache or search hit.
+        if not permitted_host(domain_name(url), allowed):
+            continue
+        found, note = probe(session, url, allowed)
+        attempts.append(url + " -> " + note)
+        if found:
+            return {"Herstellerdomain": domain_name(found), "Herstellerwebsite": found,
+                    "Herstellerwebsite-Status": "Erreichbar: HTTP 200",
+                    "Website-erreichbar": "Ja", "Website-Pruefdiagnose": " | ".join(attempts)}
     return {"Herstellerdomain": primary, "Herstellerwebsite": "",
             "Herstellerwebsite-Status": "Zugriff nicht bestätigt",
             "Website-erreichbar": "Nein", "Website-Pruefdiagnose": " | ".join(attempts)}
