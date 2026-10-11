@@ -67,6 +67,13 @@ OFFICIAL_ENTRY_URLS = {
 }
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TGA-Product-Finder/2.3; Herstellerwebsite-Pruefung)"}
 # Explicitly distinguish owned but non-catalog channels from the main site.
+# Keep a human-openable official entry even when the automated HTTP/browser
+# check is blocked. This field is never interpreted as verified access.
+BROWSER_ENTRY = {
+    "wika.com": "https://www.wika.com/de-de/startseite.WIKA",
+    "villeroy-boch.de": "https://pro.villeroy-boch.com/de/de/home",
+}
+
 ALTERNATE_CHANNELS = {
     "blog.wika.com": "Offizieller Herstellerblog; Hauptwebsite separat gesperrt",
     "shop.wika.com": "Offizieller Hersteller-Shop",
@@ -109,6 +116,12 @@ def probe(session, url, allowed):
         if not permitted_host(final_host, allowed):
             return None, "Fremdweiterleitung " + final_host
         if status_code != 200:
+            # WAF interstitials do not prove manufacturer-site availability.
+            challenge_text = response.text[:4000].lower() if status_code in (403, 429) else ""
+            challenge_markers = ("just a moment", "cloudflare", "cf-chl", "checking your browser")
+            if status_code in (403, 429) and (any(x in challenge_text for x in challenge_markers)
+                                                  or "__cf_chl" in final_url):
+                return None, "Cloudflare-Bot-Schutz (HTTP " + str(status_code) + ")"
             return None, "HTTP " + str(status_code) + " (" + final_host + ")"
         content_type = response.headers.get("Content-Type", "").lower()
         if content_type and "html" not in content_type and "xhtml" not in content_type:
@@ -132,12 +145,14 @@ def check_manufacturer(session, maker):
     if not str(maker or "").strip():
         return {"Herstellerdomain": "", "Herstellerwebsite": "",
                 "Hersteller-Hauptdomain": "", "Website-Quellenart": "",
+                "Herstellerwebsite-Browserlink": "",
                 "Herstellerwebsite-Status": "Hersteller fehlt",
                 "Website-erreichbar": "Nein", "Website-Pruefdiagnose": ""}
     primary = domain_for(maker)
     if not primary:
         return {"Herstellerdomain": "", "Herstellerwebsite": "",
                 "Hersteller-Hauptdomain": "", "Website-Quellenart": "",
+                "Herstellerwebsite-Browserlink": "",
                 "Herstellerwebsite-Status": "Offizielle Domain unbekannt",
                 "Website-erreichbar": "Nein", "Website-Pruefdiagnose": ""}
     allowed = official_hosts(primary)
@@ -155,10 +170,14 @@ def check_manufacturer(session, maker):
             return {"Herstellerdomain": domain_name(found), "Herstellerwebsite": found,
                     "Herstellerwebsite-Status": "Erreichbar: HTTP 200",
                     "Hersteller-Hauptdomain": primary, "Website-Quellenart": source_kind(found),
+                    "Herstellerwebsite-Browserlink": found,
                     "Website-erreichbar": "Ja", "Website-Pruefdiagnose": " | ".join(attempts)}
     return {"Herstellerdomain": primary, "Herstellerwebsite": "",
             "Hersteller-Hauptdomain": primary, "Website-Quellenart": "",
-            "Herstellerwebsite-Status": "Zugriff nicht bestätigt",
+            "Herstellerwebsite-Browserlink": BROWSER_ENTRY.get(primary, "https://www." + primary + "/"),
+            "Herstellerwebsite-Status": "Automatischer Zugriff gesperrt" if any(
+                "HTTP 403" in a or "Cloudflare-Bot-Schutz" in a for a in attempts
+            ) else "Zugriff nicht bestätigt",
             "Website-erreichbar": "Nein", "Website-Pruefdiagnose": " | ".join(attempts)}
 
 def run(source, destination):
