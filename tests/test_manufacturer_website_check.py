@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research"))
-from manufacturer_website_check import candidate_urls, check_manufacturer, permitted_host, probe
+from manufacturer_website_check import candidate_urls, check_manufacturer, permitted_host, probe, source_kind
 
 class FakeResponse:
     def __init__(self, url, code=200, text="<html><title>Hersteller</title></html>", mime="text/html"):
@@ -79,10 +79,11 @@ class ManufacturerWebsiteTest(unittest.TestCase):
 
     def test_villeroy_official_professional_site(self):
         s = Mock()
-        s.get.return_value = FakeResponse("https://pro.villeroy-boch.com/de/de/home")
+        s.get.return_value = FakeResponse("https://innovationdays.villeroy-boch.com/de/startseite")
         result = check_manufacturer(s, "Villeroy & Boch")
         self.assertEqual(result["Website-erreichbar"], "Ja")
-        self.assertIn("pro.villeroy-boch.com", s.get.call_args_list[0].args[0])
+        self.assertIn("innovationdays.villeroy-boch.com", s.get.call_args_list[0].args[0])
+        self.assertEqual(result["Website-Quellenart"], "Offizielle Marken-/Kampagnenseite")
 
     def test_wika_manufacturer_shop(self):
         s = Mock()
@@ -103,6 +104,21 @@ class ManufacturerWebsiteTest(unittest.TestCase):
         s.get.return_value = FakeResponse("https://unrelated-host.example/")
         result = check_manufacturer(s, "Alape")
         self.assertEqual(result["Website-erreichbar"], "Nein")
+
+    def test_corporate_and_blog_are_identified_as_fallbacks(self):
+        self.assertEqual(source_kind("https://blog.wika.com/de/"),
+                         "Offizieller Herstellerblog; Hauptwebsite separat gesperrt")
+        self.assertEqual(source_kind("https://www.villeroyboch-group.com/de/"),
+                         "Offizielle Konzernwebsite")
+        self.assertEqual(source_kind("https://www.trox.de/"), "Herstellerwebsite")
+
+    def test_primary_domain_retained_for_alternate_site(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://blog.wika.com/de/")
+        result = check_manufacturer(s, "WIKA")
+        self.assertEqual(result["Hersteller-Hauptdomain"], "wika.com")
+        self.assertEqual(result["Herstellerdomain"], "blog.wika.com")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
 
     def test_country_path_fallbacks(self):
         self.assertIn("https://www.heliosventilatoren.de/de/", candidate_urls("heliosventilatoren.de"))
