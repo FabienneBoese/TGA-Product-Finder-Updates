@@ -58,38 +58,63 @@ def plausible(maker, url):
     compact = re.sub(r"[^a-z0-9]", "", host.split(".")[0])
     return bool(tokens) and any(t in compact for t in tokens)
 
+def _check_homepage(session, host, known=False):
+    """Validate a homepage without silently trusting an unrelated redirect."""
+    host = domain_name("https://" + str(host).strip("/"))
+    if not host:
+        return None
+    for url in ("https://" + host + "/", "https://www." + host + "/"):
+        try:
+            response = session.get(url, headers=HEADERS, timeout=9, allow_redirects=True)
+            final = domain_name(response.url)
+            if response.status_code != 200 or not response.url.startswith("https://"):
+                continue
+            if final != host and final != "www." + host and not (
+                final.endswith("." + host) or host.endswith("." + final)
+            ):
+                continue
+            content_type = response.headers.get("Content-Type", "").lower()
+            if content_type and "html" not in content_type:
+                continue
+            return final, response.url, ("Bekannte Herstellerdomain; Website erreichbar" if known
+                                         else "Website erreichbar; Herstellerzuordnung prüfen")
+        except requests.RequestException:
+            continue
+    return None
+
+
 def resolve(session, maker, cache, known_domain=""):
-    """Return (domain, homepage, provenance). Cache stores only reviewed or checked entries."""
+    """Prefer a checked official known domain; do not promote a search hit over it."""
     key = maker_key(maker)
     if not key:
         return "", "", "Hersteller fehlt"
+    known_domain = domain_name("https://" + known_domain) if known_domain else ""
     saved = cache.get(key, {})
-    if saved.get("domain"):
-        return saved["domain"], saved.get("homepage", ""), saved.get("status", "Cache")
-    candidates = search_links(session, maker)
+    # Cache entries are hints, not permanent proof of current reachability.
+    candidates = []
     if known_domain:
-        candidates.append("https://www." + known_domain + "/")
-    for candidate in candidates:
-        if not plausible(maker, candidate) and domain_name(candidate) != known_domain:
+        candidates.append((known_domain, True))
+    if saved.get("domain") and saved["domain"] != known_domain:
+        candidates.append((saved["domain"], False))
+    # A known domain remains authoritative even if it is temporarily blocked.
+    for host, trusted in candidates:
+        checked = _check_homepage(session, host, trusted)
+        if checked:
+            if trusted:
+                cache[key] = {"domain": checked[0], "homepage": checked[1],
+                              "status": checked[2]}
+            return checked
+    if known_domain:
+        return known_domain, "https://" + known_domain + "/", "Bekannte Domain; Erreichbarkeit nicht bestätigt"
+    # Search discovery is only used when no known official manufacturer domain exists.
+    for candidate in search_links(session, maker):
+        if not plausible(maker, candidate):
             continue
-        host = domain_name(candidate)
-        for homepage in ("https://www." + host + "/", "https://" + host + "/"):
-            try:
-                response = session.get(homepage, headers=HEADERS, timeout=7, allow_redirects=True)
-                final = domain_name(response.url)
-                if response.status_code != 200 or not response.url.startswith("https://"):
-                    continue
-                if final != host and not plausible(maker, response.url) and final != known_domain:
-                    continue
-                status = "Website erreichbar; Herstellerzuordnung prüfen"
-                if known_domain and final == known_domain:
-                    status = "Bekannte Herstellerdomain; Website erreichbar"
-                cache[key] = {"domain": final, "homepage": response.url, "status": status}
-                return final, response.url, status
-            except requests.RequestException:
-                continue
-    if known_domain:
-        return known_domain, "https://www." + known_domain + "/", "Bekannte Domain; Erreichbarkeit nicht bestätigt"
+        checked = _check_homepage(session, domain_name(candidate))
+        if checked:
+            cache[key] = {"domain": checked[0], "homepage": checked[1],
+                          "status": checked[2]}
+            return checked
     return "", "", "Keine Herstellerwebsite bestätigt"
 
 def load_cache(path):
