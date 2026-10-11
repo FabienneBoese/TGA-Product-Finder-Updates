@@ -1,0 +1,109 @@
+name: Release local manufacturer browser access v2.3.43
+on:
+  push:
+    paths: ['.github/workflows/release-manufacturer-browser243.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: tga-release-243
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test local browser access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install -q streamlit pandas openpyxl requests beautifulsoup4 pypdf
+          mkdir -p /tmp/tga2343
+          unzip -q TGA_Product_Finder_Update_v2.3.42.zip -d /tmp/tga2343
+          python3 research/build_manufacturer_ui2343.py
+          TGA_DATA_DIR=/tmp/tga243_data python3 - <<'PY'
+          import ast,os,requests
+          from pathlib import Path
+          from urllib.parse import urlparse
+          from streamlit.testing.v1 import AppTest
+          source=Path('/tmp/tga2343/app.py').read_text(encoding='utf-8')
+          ast.parse(source)
+          assert 'APP_VERSION = "2.3.43"' in source
+          assert 'st.link_button("WIKA im normalen Browser öffnen"' in source
+          assert 'st.link_button("Villeroy & Boch im normalen Browser öffnen"' in source
+          assert 'CREATE TABLE IF NOT EXISTS manufacturer_browser_verifications' in source
+          assert 'Automatisch erreichbar' in source
+          assert 'Manuell bestätigt' in source
+          tree=ast.parse(source)
+          wanted={'_site_official','_site_manual_official'}
+          mappings={name:node for node in ast.walk(tree) if isinstance(node,ast.Assign)
+              for target in node.targets if isinstance(target,ast.Name)
+              for name in [target.id] if name in wanted}
+          funcs={node.name:node for node in ast.walk(tree)
+                 if isinstance(node,ast.FunctionDef)
+                 and node.name in ('_site_manual_url','_site_auto_ok','_site_host','_site_check')}
+          assert set(mappings)==wanted and len(funcs)==4,(mappings,funcs)
+          namespace={'_site_parse':urlparse,'_site_requests':requests}
+          exec(compile(ast.Module(body=list(mappings.values())+list(funcs.values()),type_ignores=[]),'homepage_tests','exec'),namespace)
+          auto=namespace['_site_auto_ok']
+          assert auto('Fachportal – Erreichbar – offizielle Domain')
+          assert auto('Herstellerwebsite – Browserzugriff erfolgreich')
+          for unconfirmed in ('HTTP 403 – Auch Browserzugriff gesperrt (HTTP 403)',
+                             'Browserzugriff – Weiterleitung prüfen',
+                             'Erreichbar – Weiterleitung prüfen',
+                             'Nicht erreichbar / nicht bestätigt'):
+              assert not auto(unconfirmed),unconfirmed
+          manual=namespace['_site_manual_url']
+          assert manual('WIKA')=='https://www.wika.com/de-de/startseite.WIKA'
+          assert manual('Villeroy & Boch')=='https://pro.villeroy-boch.com/de/de/home'
+          assert manual('IMI Heimeier')=='https://climatecontrol.imiplc.com/de-de/frontpage-de'
+          assert manual('Alape')=='https://www.de.laufen.com/home'
+          assert manual('TROX')=='https://www.trox.de/'
+          assert manual('')==''
+          assert manual('Unbekannter Hersteller')==''
+          class Response:
+              def __init__(self,url,code,content):
+                  self.url=url;self.status_code=code;self.content=content.encode()
+                  self.text=content
+          class Session:
+              def __init__(self,response): self.response=response
+              def get(self,*args,**kwargs): return self.response
+          check=namespace['_site_check']
+          url='https://www.wika.com/'
+          val,status=check(Session(Response(url,403,'<html>Just a moment</html>')),url,'wika.com')
+          assert val=='' and 'HTTP 403' in status,(val,status)
+          html='<html><title>WIKA</title>'+'A'*220+'</html>'
+          val,status=check(Session(Response(url,200,html)),url,'wika.com')
+          assert val==url and status=='Erreichbar – offizielle Domain',(val,status)
+          val,status=check(Session(Response('https://wrong.example/',200,html)),url,'wika.com')
+          assert not auto(status),(val,status)
+          val,status=check(Session(Response(url,200,'<html>Just a moment</html>'+'A'*220)),url,'wika.com')
+          assert val=='' and not auto(status),(val,status)
+          print('PASS: 15 offline checks for accurate reachability and safe official links')
+          os.chdir('/tmp/tga2343')
+          app=AppTest.from_file('app.py',default_timeout=45).run()
+          assert not app.exception,app.exception
+          print('PASS: Streamlit AppTest v2.3.43 no exceptions')
+          PY
+      - name: Publish tested update package
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/tga2343 && zip -q -r "$GITHUB_WORKSPACE/TGA_Product_Finder_Update_v2.3.43.zip" app.py version.json TGA_Updater.ps1)
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          file=Path('TGA_Product_Finder_Update_v2.3.43.zip')
+          Path('update_manifest.json').write_text(json.dumps({
+              'version':'2.3.43',
+              'download_url':'https://raw.githubusercontent.com/FabienneBoese/TGA-Product-Finder-Updates/main/TGA_Product_Finder_Update_v2.3.43.zip',
+              'sha256':hashlib.sha256(file.read_bytes()).hexdigest()
+          },indent=2))
+          PY
+          git config user.name 'TGA Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add TGA_Product_Finder_Update_v2.3.43.zip update_manifest.json
+          git commit -m 'Release local browser manufacturer verification v2.3.43'
+          git pull --rebase origin main
+          git push origin HEAD:main
