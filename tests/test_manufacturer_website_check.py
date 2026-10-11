@@ -62,6 +62,48 @@ class ManufacturerWebsiteTest(unittest.TestCase):
         self.assertTrue(all("/search" not in call.args[0] and "/product" not in call.args[0]
                             for call in s.get.call_args_list))
 
+    def test_imi_official_rebrand_redirect(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://climatecontrol.imiplc.com/de-de/frontpage-de")
+        result = check_manufacturer(s, "IMI Heimeier")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
+        self.assertEqual(result["Herstellerdomain"], "climatecontrol.imiplc.com")
+        self.assertIn("climatecontrol.imiplc.com", s.get.call_args_list[0].args[0])
+
+    def test_alape_brand_merged_into_laufen(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://www.de.laufen.com/home")
+        result = check_manufacturer(s, "Alape")
+        self.assertEqual(result["Herstellerdomain"], "de.laufen.com")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
+
+    def test_villeroy_official_professional_site(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://pro.villeroy-boch.com/de/de/home")
+        result = check_manufacturer(s, "Villeroy & Boch")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
+        self.assertIn("pro.villeroy-boch.com", s.get.call_args_list[0].args[0])
+
+    def test_wika_manufacturer_shop(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://shop.wika.com/de-de/shop_startseite.WIKA")
+        result = check_manufacturer(s, "WIKA")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
+        self.assertEqual(result["Herstellerdomain"], "shop.wika.com")
+
+    def test_wittigsthal_misspelling_resolves(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://www.wittigsthal.de/")
+        result = check_manufacturer(s, "Witingsthal")
+        self.assertEqual(result["Herstellerdomain"], "wittigsthal.de")
+        self.assertEqual(result["Website-erreichbar"], "Ja")
+
+    def test_reject_unrelated_redirect_even_with_entry_point(self):
+        s = Mock()
+        s.get.return_value = FakeResponse("https://unrelated-host.example/")
+        result = check_manufacturer(s, "Alape")
+        self.assertEqual(result["Website-erreichbar"], "Nein")
+
     def test_country_path_fallbacks(self):
         self.assertIn("https://www.heliosventilatoren.de/de/", candidate_urls("heliosventilatoren.de"))
 
