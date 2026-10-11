@@ -24,7 +24,7 @@ OFFICIAL_ALIASES = {
     "imi-hydronic.com": ("imi-hydronic.com", "imiplc.com"),
     "alape.com": ("alape.com", "laufen.com"),
     "wittigsthal.de": ("wittigsthal.de",),
-    "villeroy-boch.de": ("villeroy-boch.de", "villeroy-boch.com"),
+    "villeroy-boch.de": ("villeroy-boch.de", "villeroy-boch.com", "villeroyboch-group.com"),
     "viega.de": ("viega.de", "viega.com"),
     "duravit.de": ("duravit.de", "duravit.com"),
     "kemper-group.com": ("kemper-group.com",),
@@ -52,16 +52,35 @@ LANDING_PATHS = {
 # Manufacturer-controlled, independently evidenced entry points. Only hostnames in
 # OFFICIAL_ALIASES may be visited/accepted; these are not reseller search hits.
 OFFICIAL_ENTRY_URLS = {
-    "wika.com": ("https://shop.wika.com/de-de/shop_startseite.WIKA",
+    "wika.com": ("https://blog.wika.com/de/",
+                 "https://shop.wika.com/de-de/shop_startseite.WIKA",
                  "https://www.wika.com/de-de/startseite.WIKA"),
     "imi-hydronic.com": ("https://climatecontrol.imiplc.com/de-de/frontpage-de",
                         "https://climatecontrol.imiplc.com/de-de/"),
-    "villeroy-boch.de": ("https://pro.villeroy-boch.com/de/de/home",
+    "villeroy-boch.de": ("https://innovationdays.villeroy-boch.com/de/startseite",
+                        "https://www.villeroyboch-group.com/de/unternehmen/unsere-marken.html",
+                        "https://www.villeroyboch-group.com/de/",
+                        "https://pro.villeroy-boch.com/de/de/home",
                         "https://www.villeroy-boch.de/s/"),
     "alape.com": ("https://www.de.laufen.com/home", "https://www.laufen.com/"),
     "wittigsthal.de": ("https://www.wittigsthal.de/", "https://wittigsthal.de/"),
 }
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TGA-Product-Finder/2.3; Herstellerwebsite-Pruefung)"}
+# Explicitly distinguish owned but non-catalog channels from the main site.
+ALTERNATE_CHANNELS = {
+    "blog.wika.com": "Offizieller Herstellerblog; Hauptwebsite separat gesperrt",
+    "shop.wika.com": "Offizieller Hersteller-Shop",
+    "innovationdays.villeroy-boch.com": "Offizielle Marken-/Kampagnenseite",
+    "villeroyboch-group.com": "Offizielle Konzernwebsite",
+    "climatecontrol.imiplc.com": "Offizielle IMI-Nachfolgewebsite",
+    "laufen.com": "Offizielle LAUFEN-Nachfolgemarke (Alape)",
+}
+
+def source_kind(url):
+    host = domain_name(url)
+    return next((kind for root, kind in ALTERNATE_CHANNELS.items()
+                 if host == root or host.endswith("." + root)), "Herstellerwebsite")
+
 BLOCK_MARKERS = ("access denied", "verify you are human", "checking your browser",
                  "attention required! | cloudflare", "just a moment...")
 
@@ -112,11 +131,13 @@ def probe(session, url, allowed):
 def check_manufacturer(session, maker):
     if not str(maker or "").strip():
         return {"Herstellerdomain": "", "Herstellerwebsite": "",
+                "Hersteller-Hauptdomain": "", "Website-Quellenart": "",
                 "Herstellerwebsite-Status": "Hersteller fehlt",
                 "Website-erreichbar": "Nein", "Website-Pruefdiagnose": ""}
     primary = domain_for(maker)
     if not primary:
         return {"Herstellerdomain": "", "Herstellerwebsite": "",
+                "Hersteller-Hauptdomain": "", "Website-Quellenart": "",
                 "Herstellerwebsite-Status": "Offizielle Domain unbekannt",
                 "Website-erreichbar": "Nein", "Website-Pruefdiagnose": ""}
     allowed = official_hosts(primary)
@@ -133,8 +154,10 @@ def check_manufacturer(session, maker):
         if found:
             return {"Herstellerdomain": domain_name(found), "Herstellerwebsite": found,
                     "Herstellerwebsite-Status": "Erreichbar: HTTP 200",
+                    "Hersteller-Hauptdomain": primary, "Website-Quellenart": source_kind(found),
                     "Website-erreichbar": "Ja", "Website-Pruefdiagnose": " | ".join(attempts)}
     return {"Herstellerdomain": primary, "Herstellerwebsite": "",
+            "Hersteller-Hauptdomain": primary, "Website-Quellenart": "",
             "Herstellerwebsite-Status": "Zugriff nicht bestätigt",
             "Website-erreichbar": "Nein", "Website-Pruefdiagnose": " | ".join(attempts)}
 
