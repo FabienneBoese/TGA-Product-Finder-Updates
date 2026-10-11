@@ -112,6 +112,37 @@ replacement='''                    if response is not None and response.status==
 assert needle in ui
 ui=ui.replace(needle,replacement,1)
 
+# HTTP checks stay fast: a failed headless browser cannot complete a human
+# Cloudflare check. Do not automatically spawn Playwright for each blocked URL.
+needle='''            if response.status_code in (401,403,429):
+                browser_url,browser_status=_site_browser_check(url,expected)
+                if browser_url:return (browser_url,browser_status)
+                return (url,"HTTP "+str(response.status_code)+" – "+browser_status)
+        except _site_requests.RequestException:
+            browser_url,browser_status=_site_browser_check(url,expected)
+            if browser_url:return (browser_url,browser_status)
+        return ("","")'''
+replacement='''            if response.status_code in (401,403,429):
+                return ("","HTTP "+str(response.status_code)+" – im normalen Browser prüfen")
+        except _site_requests.RequestException:
+            return ("","Netzwerkzugriff nicht bestätigt")
+        return ("","")'''
+assert needle in ui
+ui=ui.replace(needle,replacement,1)
+needle='''            found,status=_site_check(session,url,_site_host(url))
+            if found:
+                if _site_auto_ok(status):'''
+replacement='''            found,status=_site_check(session,url,_site_host(url))
+            if not found and status.startswith("HTTP ") and blocked is None:
+                blocked=("",status)
+            if found:
+                if _site_auto_ok(status):'''
+assert needle in ui
+ui=ui.replace(needle,replacement,1)
+start=ui.index('    if st.button("Browserkomponente installieren",key="tga_browser_setup_241"):')
+end=ui.index('    try:\n        _site_conn=db()',start)
+ui=ui[:start]+ui[end:]
+
 # The user's browser, not the server's headless browser, handles manual challenges.
 # Human confirmation persists in the existing local project database with provenance.
 needle='''            _site_project=st.selectbox("Projekt",_site_projects,key="tga_sites_project_239")'''
