@@ -321,7 +321,7 @@ def rank_hit(row,hit):
             return None
         # With no model, require two independent distinctive words unless
         # a single long compound word makes the product more specific.
-        if len(set(product_matches))<2 and max(map(len,product_matches))<9:
+        if len(set(product_matches))<2:
             return None
         evidence.append("Produktbeschreibung im Index")
         score+=min(24,8*len(set(product_matches)))
