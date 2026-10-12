@@ -54,12 +54,15 @@ def parse_sitemap(body):
 def _rank_sitemap_link(url,model,product,maker):
     """Cheap URL-only discovery rank. This is not a page verification."""
     path=unquote(urlparse(url).path)
+    if "&nbsp;" in url.lower() or "&#" in url.lower():
+        return -1
     path_flat=compact(path)
     if not path_flat:
         return -1
     excluded=("/blog/","/news/","/kontakt","/contact","/impressum",
               "/datenschutz","/privacy","/terms","/unternehmen",
-              "/company","/career","/jobs","/presse","/service/")
+              "/company","/career","/jobs","/presse","/service/",
+              "/newscenter/","/trox-newscenter/","/aktuelles/","/neuigkeiten/")
     if any(x in path.lower() for x in excluded):
         return -1
     if path.lower().endswith((".jpg",".png",".pdf",".docx",".xml",".zip")):
@@ -73,11 +76,10 @@ def _rank_sitemap_link(url,model,product,maker):
         family=bool(len(compact(name))>=3 and compact(name) in path_flat)
         if not (full or family):
             return -1
-        return (80 if full else 40)+min(18,6*found)
+        language=8 if "/de/" in path.lower() or "/de-de/" in path.lower() else 0
+        return (80 if full else 40)+min(18,6*found)+language
     if found>=2:
         return 30+6*found
-    if found==1 and max((len(w) for w in product_words if w in normalize(path)),default=0)>=9:
-        return 15
     return -1
 
 
