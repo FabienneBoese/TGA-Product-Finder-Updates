@@ -106,7 +106,7 @@ def allowed_host(url, official_roots):
 
 
 def maker_domain(maker):
-    return KNOWN_DOMAINS.get(normalize(maker).strip()," " .strip())
+    return KNOWN_DOMAINS.get(normalize(maker).strip(),"")
 
 
 def maker_aliases(maker):
@@ -356,7 +356,9 @@ def find_candidates(row,providers,per_provider=12):
     found={}
     for provider in providers:
         try:
-            hits=provider.search(query,limit=per_provider)
+            hits=(provider.search_for(row,limit=per_provider)
+                  if hasattr(provider,"search_for")
+                  else provider.search(query,limit=per_provider))
             diag.append(provider.name+": "+str(len(hits))+" Indextreffer"
                         +(("; "+provider.last_error) if getattr(provider,"last_error","") else ""))
             for hit in hits:
@@ -370,7 +372,9 @@ def find_candidates(row,providers,per_provider=12):
             diag.append(provider.name+": "+type(exc).__name__)
     ranking=sorted(found.values(),key=lambda h:(-h.score,h.url))
     best=ranking[0] if ranking else None
-    state=("Indexkandidat – Herstellerseite ungeprüft"
+    state=("Offizieller Sitemap-Eintrag – Produktseite ungeprüft"
+           if best and best.provider=="official_sitemap"
+           else "Indexkandidat – Herstellerseite ungeprüft"
            if best and best.source_kind=="Herstellerdomain"
            else "Indexkandidat – Drittanbieter, Prüfung offen" if best
            else "Kein belastbarer Indextreffer")
@@ -389,14 +393,20 @@ def find_candidates(row,providers,per_provider=12):
                                          ensure_ascii=False)}
 
 
-def process_file(source,target,provider="bing",max_rows=0,delay=0.25):
+def process_file(source,target,provider="auto",max_rows=0,delay=0.25):
     with Path(source).open(encoding="utf-8-sig",newline="") as file:
         rows=list(csv.DictReader(file,delimiter=";"))
     if max_rows>0:
         rows=rows[:max_rows]
     if not rows:
         raise ValueError("Keine Eingabezeilen")
-    if provider=="brave":
+    if provider in ("sitemap","auto"):
+        from manufacturer_sitemap_provider import OfficialSitemap
+        providers=[OfficialSitemap()]
+        if provider=="auto":
+            apikey=os.environ.get("TGA_BRAVE_API_KEY","")
+            providers.append(BraveAPI(apikey) if apikey else BingRSS())
+    elif provider=="brave":
         apikey=os.environ.get("TGA_BRAVE_API_KEY","")
         if not apikey:
             raise ValueError("TGA_BRAVE_API_KEY fehlt – keine verdeckte Fallback-Suche")
@@ -438,7 +448,7 @@ def process_file(source,target,provider="bing",max_rows=0,delay=0.25):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("input");p.add_argument("output")
-    p.add_argument("--provider",choices=("bing","brave","offline"),default="bing")
+    p.add_argument("--provider",choices=("auto","sitemap","bing","brave","offline"),default="auto")
     p.add_argument("--max-rows",type=int,default=0)
     p.add_argument("--delay",type=float,default=0.25)
     opts=p.parse_args()
