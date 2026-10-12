@@ -4,8 +4,10 @@ on:
     paths:
       - 'research/universal_product_search.py'
       - 'research/manufacturer_sitemap_provider.py'
+      - 'research/verify_product_candidates.py'
       - 'tests/test_universal_product_search.py'
       - 'tests/test_manufacturer_sitemap_provider.py'
+      - 'tests/test_verify_product_candidates.py'
       - '.github/workflows/test-universal-search.yml'
   workflow_dispatch:
 permissions:
@@ -19,4 +21,5 @@ jobs:
       - run: python -m pip install -q requests
       - run: python -m unittest discover -s tests -p 'test_universal_product_search.py' -v
       - run: python -m unittest discover -s tests -p 'test_manufacturer_sitemap_provider.py' -v
-      - run: python -m compileall -q research/universal_product_search.py research/manufacturer_sitemap_provider.py
+      - run: python -m unittest discover -s tests -p 'test_verify_product_candidates.py' -v
+      - run: python -m compileall -q research/universal_product_search.py research/manufacturer_sitemap_provider.py research/verify_product_candidates.py
