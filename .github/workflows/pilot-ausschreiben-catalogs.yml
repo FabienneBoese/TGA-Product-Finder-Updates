@@ -1,0 +1,41 @@
+name: Pilot AUSSCHREIBEN.DE Herstellerkataloge
+on:
+  push:
+    paths: ['.github/workflows/pilot-ausschreiben-catalogs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prüfe fünf öffentliche Herstellerkatalog-Einstiege
+        run: |
+          python - <<'PY'
+          import requests,json
+          from html.parser import HTMLParser
+          from urllib.parse import urlparse
+          class Title(HTMLParser):
+              def __init__(self):
+                  super().__init__();self.active=False;self.text=''
+              def handle_starttag(self,tag,attrs):
+                  if tag=='title':self.active=True
+              def handle_endtag(self,tag):
+                  if tag=='title':self.active=False
+              def handle_data(self,data):
+                  if self.active:self.text+=data
+          session=requests.Session()
+          for brand in ['geberit','trox','rockwool','villeroy-boch','wika']:
+              url='https://www.ausschreiben.de/catalog/'+brand
+              item={'brand':brand,'requested':url}
+              try:
+                  r=session.get(url,timeout=15,allow_redirects=True)
+                  title=Title();title.feed(r.text[:400000])
+                  item.update(status=r.status_code,final=r.url,title=title.text[:120],
+                              bytes=len(r.content),
+                              brand_in_html=brand.split('-')[0] in r.text[:400000].lower())
+              except requests.RequestException as exc:item['error']=type(exc).__name__
+              print('CATALOG_PILOT',json.dumps(item,ensure_ascii=False))
+          PY
