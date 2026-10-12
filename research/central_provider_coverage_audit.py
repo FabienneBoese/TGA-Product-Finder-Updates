@@ -51,6 +51,8 @@ def audit_rows(rows):
         result=dict(item)
         result.update({
             "Hersteller_normiert":maker,
+            "Typ_Modell_in_Liste": "Ja" if str(item.get("Typ / Modell","")).strip() else "Nein",
+            "Artikelnummer_Kandidaten_in_Liste": "Ja" if str(item.get("Artikelnummern-Kandidaten","")).strip() else "Nein",
             "ARGE_Marke_in_publizierten_Beispielen":
                ("Ja" if listed else ("Hersteller fehlt" if not maker else "Nicht im Beispielnachweis")),
             "ARGE_Produkt_nachgewiesen":"Nicht geprüft – Datenfreigabe erforderlich" if maker else "Hersteller fehlt",
@@ -81,6 +83,8 @@ def audit_file(source, destination):
     summary={
         "testdatensaetze":len(results),
         "hersteller_mit_nennung":sum(bool(r["Hersteller_normiert"]) for r in results),
+        "mit_typ_modell":sum(r["Typ_Modell_in_Liste"]=="Ja" for r in results),
+        "mit_artikelnummer_kandidaten":sum(r["Artikelnummer_Kandidaten_in_Liste"]=="Ja" for r in results),
         "unterschiedliche_hersteller":len(normalized),
         "arge_marke_in_publizierter_liste":sum(r["ARGE_Marke_in_publizierten_Beispielen"]=="Ja" for r in results),
         "arge_unterschiedliche_marken":len(arge_brands),
