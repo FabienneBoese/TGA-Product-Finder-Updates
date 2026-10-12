@@ -108,7 +108,7 @@ class SitemapProviderTests(unittest.TestCase):
         p=OfficialSitemap(Mock())
         self.assertEqual(p.search_for({"Hersteller":"Nonexistent new manufacturer",
                                         "Produkt":"Test","Typ / Modell":"123"}),[])
-        self.assertIn("Domain",p.last_error)
+        self.assertIn("domain",p.last_error.casefold())
 
 
 if __name__=="__main__":
